@@ -12,8 +12,8 @@ This promotes the public `v0.1.0-rc.1` starter-only prerelease to stable `v0.1.0
 ## Artifact
 
 - File: `release/pokit-starter-v0.1.0.tar.gz`
-- Byte size: `15010`
-- SHA-256: `153b189483d0625031d097468356706629412fdecdd5bb942f442025389d1565`
+- Byte size: `15492`
+- SHA-256: `844b548a8ff920850d911f2e0e4991103c7b9c10ea5acd07407107826a730d9d`
 - Source boundary: `starter-manifest.yaml` include entries only
 - Mapping: `starter/.ai-os/**` -> `.ai-os/**`; `starter/scripts/**` -> `scripts/**`
 
@@ -21,25 +21,25 @@ The checksum and byte size must be reverified again immediately before upload.
 
 ## Preflight
 
-- [ ] `node scripts/pokit-doctor.mjs`
-- [ ] `node scripts/pokit-starter-self-test.mjs`
-- [ ] `node --test tests/pokit-starter.test.mjs tests/starter-bundle.test.mjs tests/release-governance.test.mjs`
-- [ ] `shasum -a 256 release/pokit-starter-v0.1.0.tar.gz`
-- [ ] Stable archive contents match mapped manifest output
-- [ ] Final stable archive safety scan finds no private paths, secrets, run logs, event receipts, or production history
+- [x] `node scripts/pokit-doctor.mjs`
+- [x] `node scripts/pokit-starter-self-test.mjs`
+- [x] `node --test tests/pokit-starter.test.mjs tests/starter-bundle.test.mjs tests/release-governance.test.mjs`
+- [x] `shasum -a 256 release/pokit-starter-v0.1.0.tar.gz`
+- [x] Stable archive contents match mapped manifest output
+- [x] Final stable archive safety scan finds no private paths, secrets, run logs, event receipts, or production history
 
 ## External Actions
 
-- [ ] Stable promotion commit scope confirmed
-- [ ] GitHub remote target confirmed: `dongwonlee222/POKit2`
-- [ ] No existing remote `v0.1.0` tag or GitHub release before creation
-- [ ] Tag name confirmed: `v0.1.0`
-- [ ] Branch pushed to approved remote
-- [ ] Tag pushed to approved remote
-- [ ] GitHub release created with title `POKit Starter v0.1.0`
-- [ ] GitHub release is not marked prerelease
-- [ ] Archive uploaded to the GitHub release
-- [ ] Checksum visible in release notes
+- [x] Stable promotion commit scope confirmed
+- [x] GitHub remote target confirmed: `dongwonlee222/POKit2`
+- [x] No existing remote `v0.1.0` tag or GitHub release before creation
+- [x] Tag name confirmed: `v0.1.0`
+- [x] Branch pushed to approved remote
+- [x] Tag pushed to approved remote
+- [x] GitHub release created with title `POKit Starter v0.1.0`
+- [x] GitHub release is not marked prerelease
+- [x] Archive uploaded to the GitHub release
+- [x] Checksum visible in release notes
 
 ## Explicit Non-actions
 
