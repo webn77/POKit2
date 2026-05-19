@@ -1,0 +1,22 @@
+schema_version: 0.1.0
+pokit_version:
+  starter_version: 0.1.0
+  contract_version: 0.1.0
+  schema_version: 0.1.0
+  skill_version: null
+  runner_version: null
+  generated_shim_version: null
+  minimum_supported_schema: 0.1.0
+  default_locale: ko-KR
+install_mode: starter-only
+compatibility:
+  on_missing_runner: warn
+  on_missing_skill: warn
+  on_schema_mismatch: warn
+  destructive_update_allowed: false
+update_policy:
+  preserve_user_ai_os: true
+  generated_shim_regenerable: true
+  migration_requires_dry_run: true
+  migration_requires_backup_hint: true
+  migration_requires_rollback_hint: true
