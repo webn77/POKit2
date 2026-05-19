@@ -2,8 +2,37 @@
 
 ## [Unreleased]
 
-- Stable `v0.1.0` release is not yet cut.
 - Package registry publish is not included.
+
+## [0.1.0] - 2026-05-19
+
+### Changed
+
+- Promoted the public-safe POKit Starter from `v0.1.0-rc.1` to stable `v0.1.0`.
+- Updated public release wording and archive naming for stable starter distribution.
+
+### Verified
+
+- Stable archive content matches manifest-mapped output.
+- Extracted stable archive runner and doctor pass.
+- Starter self-test, focused starter tests, release governance tests, and repo doctor pass before stable release.
+
+### Release Boundary
+
+- This is the first stable starter release.
+- The starter archive source boundary is `starter-manifest.yaml`.
+- `starter/.ai-os/**` is packaging source and becomes public `.ai-os/**` inside the starter archive.
+- Root `ARCHITECTURE.md`, `CHANGELOG.md`, and `LICENSE` are included in the starter archive.
+- Source-repo `RELEASE.md` remains outside the starter archive because it records release checklist and checksum evidence.
+- Root project `.ai-os/` production history is not part of the starter archive.
+
+### Not Included
+
+- Hosted service or dashboard.
+- Required external adapters.
+- First-class epic artifact support.
+- Package registry publication.
+- Private project history, run logs, event receipts, secrets, or personal paths in the starter archive.
 
 ## [0.1.0-rc.1] - 2026-05-19
 

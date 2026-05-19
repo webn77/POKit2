@@ -60,6 +60,6 @@ Excluded:
 
 ## Release Boundary
 
-`v0.1.0-rc.1` is a release candidate. It is intended for public testing of the starter bundle, not as a stable `v0.1.0` release.
+`v0.1.0` is the first stable starter release. It follows the public `v0.1.0-rc.1` prerelease and keeps the same starter-only publication boundary.
 
-The release candidate can be called externally released only after Git commit, tag, push, GitHub release, and uploaded archive evidence are recorded under the active release issue.
+Stable release claims require recorded Git commit, tag, push, GitHub release, and uploaded archive evidence under the active release issue.
