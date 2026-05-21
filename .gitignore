@@ -1,3 +1,6 @@
 .DS_Store
 ai-os
 release/*/
+.claude/worktrees/
+.claude/settings.local.json
+.modu-harness/

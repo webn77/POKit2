@@ -4,7 +4,7 @@ POKit helps AI-assisted product work survive beyond chat history.
 
 Start with natural language. Keep the source of truth in your repo. Stop AI from claiming "done" without evidence.
 
-POKit is a local-first AI Harness for PMs and POs working with Codex or Claude. It turns requests like "POKit 시작하자", "이 고민을 이슈로 잡아줘", and "완료 가능한지 확인해줘" into a repo-native workflow where issues, evidence, QA, gates, memory, and next actions live under `.ai-os`.
+POKit is a local-first AI Harness for PMs and POs working with Codex, Claude, or Antigravity. It turns requests like "POKit 시작하자", "이 고민을 이슈로 잡아줘", and "완료 가능한지 확인해줘" into a repo-native workflow where issues, evidence, QA, gates, memory, and next actions live under `.ai-os`.
 
 No hosted dashboard, no required SaaS account, no CLI to learn first. Copy the starter into a project, ask naturally, and let `.ai-os` become the source of truth.
 
@@ -94,7 +94,7 @@ You
  |
  |  "POKit 시작하자"
  v
-Codex / Claude
+Codex / Claude / Antigravity
  |
  |  reads startup rules
  v
@@ -128,6 +128,12 @@ project/
 |-- AGENTS.md
 |     Agent startup rule: read .ai-os/current.md first
 |
+|-- CLAUDE.md
+|     Claude Code entrypoint: imports AGENTS.md
+|
+|-- ANTIGRAVITY.md
+|     Antigravity entrypoint: imports AGENTS.md
+|
 |-- README.md
 |-- ARCHITECTURE.md
 |
@@ -152,6 +158,55 @@ project/
             |-- failure-index.md style router
             `-- prevention-rules.md
 ```
+
+## What's New in v0.2.0
+
+v0.2.0 adds PO decision-tracking surfaces while keeping the natural-language entrypoint and `.ai-os` source-of-truth principles unchanged.
+
+### Lifecycle Cards
+
+Five PO/PM response moments now render as open-right ASCII cards:
+
+- `🚀 시작 / 이어서` — session start, restores active issue and next action.
+- `🔄 진행` — work in progress.
+- `✅ 완료` — work or gate pass, with changes and verification.
+- `⚠️ 확인 필요` — blocked, needs approval.
+- `🧭 종료` — session close with handoff.
+
+Cards are **display-only**. A card never approves status transitions, includes work in `release-scope.yaml`, or marks a gate passed.
+
+### Sprint Backlog and Release Scope
+
+```text
+.ai-os/sprints/<sprint>/
+  release-scope.yaml   accepted project-owned issue membership (source of truth)
+  backlog.md           read-only derived view grouped by project + status
+```
+
+Status enum: `scoped / candidate / accepted / in_progress / gate_passed / dropped`. Issue-and-todo dual lists are replaced with a single POK + status model.
+
+### Agent Profile Dispatcher
+
+POK frontmatter `agent_profile` (`planner / coder / reviewer / data-analyst`) maps to permission level and worker assignment at runtime. Permission, worker kind, and model tier are dispatcher outputs, not POK source-of-truth.
+
+### Runner Commands
+
+Display-only command contracts:
+
+- `/pokit add` — propose a new issue (lifecycle card output).
+- `/pokit dispatch <POK-XXX>` — request runner assignment for an issue.
+- `/pokit gate <POK-XXX>` — request gate evidence summary.
+
+Commands surface proposed actions. Approval remains with the human PO.
+
+### Startup IO Budget
+
+`runPreflight` now reads ≤5 files at startup (down from ~125). Doctor remains authoritative for explicit CLI, pre-commit, CI, and gate-claim invocations.
+
+### Failure Memory and Test Brittleness
+
+- AFR-003 catches stale derived artifacts (backlog, release-scope, spec, roadmap, session memory) after gate-passed work.
+- AFR-004 catches hardcoded active-issue references in tests. The `tests/lib/test-fixtures.mjs` helper provides dynamic reads so gate advances do not break the suite.
 
 ## Core Loop
 
@@ -201,15 +256,18 @@ Code management rules:
 
 ## Boundaries
 
-POKit Starter v0.1.0 is intentionally small.
+POKit Starter is intentionally small.
 
 Included:
 
 - Local-first `.ai-os` starter structure
-- Natural-language startup path for Codex/Claude
+- Natural-language startup path for Codex/Claude/Antigravity
 - Single-file Harness Issue example
 - Runner and doctor helper scripts
 - Session handoff and failure-memory entry point
+- Lifecycle card response standard (v0.2.0)
+- Sprint backlog and release-scope artifacts (v0.2.0)
+- Agent profile dispatcher and runner command contracts (v0.2.0)
 
 Not included:
 

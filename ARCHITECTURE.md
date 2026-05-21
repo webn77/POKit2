@@ -48,6 +48,43 @@ Excluded:
 - Package registry distribution.
 - First-class epic artifact support.
 
+## v0.2.0 Additions
+
+v0.2.0 keeps the L0/L1/L2 boundary intact while adding PO decision-tracking surfaces and runtime safety contracts.
+
+### PO Decision Tracking Surfaces
+
+- `.ai-os/sprints/<sprint>/release-scope.yaml` — accepted project-owned issue membership for a sprint. Source-of-truth for what is in the sprint.
+- `.ai-os/sprints/<sprint>/backlog.md` — read-only derived view grouped by project and status. Reflects POK frontmatter, not edited directly.
+- Status enum (`scoped / candidate / accepted / in_progress / gate_passed / dropped`) replaces the previous dual issue/todo split.
+- Lifecycle cards (`🚀 시작 / 🔄 진행 / ✅ 완료 / ⚠️ 확인 필요 / 🧭 종료`) are display-only PO/PM response surfaces; they never approve durable work.
+
+### Agent Profile Dispatcher
+
+- POK frontmatter `agent_profile` (planner/coder/reviewer/data-analyst) maps to permission level (`propose_only / write_scoped / read_only`) and worker kind via `scripts/lib/agent-profile-dispatcher.mjs`.
+- Runtime fields (`worker_kind`, `model_tier`, `runtime_preference`) are dispatcher output, not POK source-of-truth.
+- Concrete provider model names resolve from `pokit.config.yaml` at runtime; POK files never carry vendor model identifiers.
+
+### Runtime Layout
+
+- `scripts/lib/lifecycle-card-renderer.mjs` — open-right ASCII renderer for startup/close cards.
+- `scripts/lib/agent-profile-dispatcher.mjs` — dispatch contract for agent_profile.
+- `scripts/lib/status-enum.mjs` — status enum source-of-truth + `deriveStatus` auto-derive.
+- `scripts/lib/optional-fields.mjs` — optional POK fields validator (`depends_on`, `agent_profile`, `goal`, `ai_self_verify`).
+- `scripts/pokit-runner.mjs` — startup preflight (lightweight, no doctor scan; status from `current.gate_state`).
+- `scripts/pokit-doctor.mjs` — full audit for explicit CLI / pre-commit / CI / gate-claim.
+
+### Test Infrastructure (dev-only, not in starter)
+
+- `tests/lib/test-fixtures.mjs` — dynamic read helpers (`getCurrentState`, `getActiveIssue`, `getNextAction`, `getActiveIssueFrontmatter`). Tests read `.ai-os/current.md` instead of hardcoding `POK-XXX` literals so gate advances do not break the suite.
+- `.ai-os/standards/test-standard.md` — dynamic-read pattern standard backed by AFR-004 prevention rule.
+
+### Startup Boundary
+
+- Startup reads `AGENTS.md`, `.ai-os/current.md`, `.ai-os/memory/session/handoff.md`, and `.ai-os/standards/communication.md` only.
+- Startup does not run the full test suite, JSONL parse, gate evidence collection, release packaging checks, issue mutation, release-scope mutation, external writes, or archive/tag/publish actions.
+- `runPreflight` readFile count is ≤5 regardless of how many POK files exist.
+
 ## Packaging Boundary
 
 `starter-manifest.yaml` is the starter packaging boundary. Packaging is include-only.

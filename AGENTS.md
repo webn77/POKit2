@@ -12,3 +12,4 @@ Rules:
 - Do not start durable work without a Harness Issue.
 - Do not claim done without gate evidence.
 - User-facing responses default to Korean.
+- On restart phrases ("포킷 시작", "시작하자", "이어서 하자"), use the open-right ASCII Startup Template from `.ai-os/standards/communication.md`.
