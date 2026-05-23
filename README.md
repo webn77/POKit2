@@ -32,12 +32,12 @@ Natural language request
 
 ## Quick Start
 
-POKit Starter v0.2.1 is distributed as a starter archive. It is not an npm, pip, Homebrew, Docker, or package-registry install.
+POKit Starter v0.5.0 is distributed as a starter archive. It is not an npm, pip, Homebrew, Docker, or package-registry install.
 
 ### Option A: GitHub UI
 
-1. Open the [v0.2.1 release](https://github.com/dongwonlee222/POKit2/releases/tag/v0.2.1).
-2. Download `pokit-starter-v0.2.1.tar.gz`.
+1. Open the [v0.5.0 release](https://github.com/dongwonlee222/POKit2/releases/tag/v0.5.0).
+2. Download `pokit-starter-v0.5.0.tar.gz`.
 3. Extract it into a fresh project folder.
 4. Ask your agent: `POKit 시작하자`.
 
@@ -46,9 +46,9 @@ POKit Starter v0.2.1 is distributed as a starter archive. It is not an npm, pip,
 ```bash
 mkdir my-project
 cd my-project
-curl -L -o pokit-starter-v0.2.1.tar.gz \
-  https://github.com/dongwonlee222/POKit2/releases/download/v0.2.1/pokit-starter-v0.2.1.tar.gz
-tar -xzf pokit-starter-v0.2.1.tar.gz
+curl -L -o pokit-starter-v0.5.0.tar.gz \
+  https://github.com/dongwonlee222/POKit2/releases/download/v0.5.0/pokit-starter-v0.5.0.tar.gz
+tar -xzf pokit-starter-v0.5.0.tar.gz
 pokit="$PWD"
 node scripts/pokit-runner.mjs "$pokit"
 node scripts/pokit-doctor.mjs
@@ -60,9 +60,9 @@ node scripts/pokit-doctor.mjs
 mkdir my-project
 cd my-project
 Invoke-WebRequest `
-  -Uri "https://github.com/dongwonlee222/POKit2/releases/download/v0.2.1/pokit-starter-v0.2.1.tar.gz" `
-  -OutFile "pokit-starter-v0.2.1.tar.gz"
-tar -xzf pokit-starter-v0.2.1.tar.gz
+  -Uri "https://github.com/dongwonlee222/POKit2/releases/download/v0.5.0/pokit-starter-v0.5.0.tar.gz" `
+  -OutFile "pokit-starter-v0.5.0.tar.gz"
+tar -xzf pokit-starter-v0.5.0.tar.gz
 $env:pokit = (Get-Location).Path
 node scripts/pokit-runner.mjs $env:pokit
 node scripts/pokit-doctor.mjs
@@ -86,6 +86,27 @@ runner: pass
 doctor: pass
 active issue: POK-001
 ```
+
+## Runtime Setup
+
+POKit works from the repo entrypoints (`AGENTS.md`, `CLAUDE.md`, `ANTIGRAVITY.md`) and can also use runtime-specific skills.
+
+### Codex
+
+To make Codex and Codex subagents automatically recognize `pokit-issue`, install a Codex-facing skill:
+
+```bash
+mkdir -p ~/.codex/skills/pokit-issue
+cp .claude/skills/pokit-issue/SKILL.md ~/.codex/skills/pokit-issue/SKILL.md
+```
+
+Then restart Codex or open a fresh `codex exec` session and ask:
+
+```text
+POK-100 시작
+```
+
+Codex should report that it will use `pokit-issue`. See `docs/runtime/codex.md` for verification and troubleshooting.
 
 ## How It Works
 
@@ -279,9 +300,25 @@ Not included:
 - Automatic multi-agent orchestration
 - First-class epic artifact support
 
+## Development
+
+If you have cloned the source repository, run the full test suite and doctor check with:
+
+```bash
+npm test
+npm run doctor
+```
+
+These commands require Node.js 18+ and no additional dependencies. The test suite runs 240+ unit tests with the built-in `node:test` runner. CI runs the same commands on every push and pull request.
+
+Branch protection note: to require CI passage before merging, enable branch protection rules in GitHub → Settings → Branches → Require status checks → select the `test` job.
+
+**starter-manifest decision (POK-073):** `package.json` is not included in the starter distribution. Starter users may already have a `package.json` in their project; including one would risk overwriting it on update. The `npm test` / `npm run doctor` scripts are documented here and in `ARCHITECTURE.md` for contributors and source-repo users only.
+
 ## More Docs
 
 - `ARCHITECTURE.md`: structure, runtime flow, and packaging boundary
+- `docs/runtime/codex.md`: Codex skill setup and verification
 - `CHANGELOG.md`: public version history
 - `RELEASE.md`: stable release checklist and evidence
 - `LICENSE`: MIT license
