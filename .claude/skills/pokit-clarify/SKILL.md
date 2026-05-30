@@ -7,6 +7,7 @@ Use this skill when issue requirements, acceptance criteria, or gate expectation
 - Read `.ai-os/current.md` first.
 - Prefer the smallest useful clarification.
 - Mark unresolved ambiguity with `[NEEDS CLARIFICATION:]`.
+- The starter doctor fails unresolved `[NEEDS CLARIFICATION:]` markers in the active issue; this is a blocking signal, not decoration.
 - Do not execute unclear work as if it were ready.
 - Run doctor after updating issue text.
 - Public contract tokens: `pokit.clarify`, `pokit.backlog`, `pokit.issue`, `[NEEDS CLARIFICATION:]`, `Verification`, `gate evidence`.

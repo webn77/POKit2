@@ -17,7 +17,7 @@ Use this skill when the active issue is ready and the user explicitly approves e
 1. Confirm active issue and gate state from `.ai-os/current.md`.
 2. Run `node scripts/pokit-runner.mjs "진행해줘"` for a preview when useful.
 3. After `b` or `자동`, treat the input as `Execution approval` and record `Worker authorization`.
-4. Decide whether `Worker Tasks` and worker `fan-out` are needed. If workers cannot run, record `Fallback reason`.
+4. Decide whether `Worker Tasks` and worker `fan-out` are needed. Worker authorization is not proof that workers actually ran; it only records permission. Do not claim automatic subagent spawn unless a supported runtime adapter exists and leaves execution evidence. If no supported runtime adapter is available, record `Workers: none (narrow fallback)` and `Fallback reason`.
 5. Implement the issue in the smallest coherent change.
 6. Run `Post-change review` and resolve `Review findings`.
 7. Run focused tests or checks.

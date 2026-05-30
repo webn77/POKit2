@@ -205,6 +205,8 @@ async function checkActiveIssue(context, items) {
       fail(items, 'active_issue_section', filePath, `Missing section: ${section}.`, `Add ## ${section} to ${filePath}.`);
     }
   }
+
+  checkUnresolvedClarificationMarker(issueText, filePath, items);
 }
 
 async function checkStateViewSync(context, items) {
@@ -326,6 +328,24 @@ function parseReadOrderSection(text, sectionName) {
 
 function hasSection(text, section) {
   return new RegExp(`^## ${escapeRegex(section)}\\s*$`, 'm').test(text);
+}
+
+function checkUnresolvedClarificationMarker(issueText, filePath, items) {
+  const clarifications = readSection(issueText, 'Clarifications');
+  if (!clarifications || !clarifications.includes('[NEEDS CLARIFICATION:')) return;
+
+  fail(
+    items,
+    'unresolved_clarification',
+    filePath,
+    `${filePath} ## Clarifications contains unresolved [NEEDS CLARIFICATION:] marker.`,
+    'Resolve all [NEEDS CLARIFICATION:] items before advancing the active issue.'
+  );
+}
+
+function readSection(text, section) {
+  const match = text.match(new RegExp(`^## ${escapeRegex(section)}\\s*\\n([\\s\\S]*?)(?=\\n## |$)`, 'm'));
+  return match?.[1] ?? null;
 }
 
 function summarize(items) {

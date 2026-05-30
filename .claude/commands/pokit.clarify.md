@@ -10,6 +10,8 @@ Recommended flow:
 4. Update the issue only after the answer is clear.
 5. Run `node scripts/pokit-doctor.mjs`.
 
+The starter doctor fails unresolved `[NEEDS CLARIFICATION:]` markers in the active issue, so use the marker only for ambiguity that must be resolved before execution.
+
 Clarification work reduces ambiguity before execution starts.
 
 Public contract tokens: `pokit.clarify`, `pokit.backlog`, `pokit.issue`, `[NEEDS CLARIFICATION:]`, `Verification`, `gate evidence`.

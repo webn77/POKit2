@@ -28,7 +28,10 @@ test('starter runner, doctor, metrics, issue list, and evidence list run', () =>
 
 test('starter first-use flow creates and activates an isolated smoke issue', async () => {
   const isolatedRoot = await mkdtemp(path.join(tmpdir(), 'pokit-starter-smoke-'));
-  await cp(process.cwd(), isolatedRoot, { recursive: true });
+  await cp(process.cwd(), isolatedRoot, {
+    recursive: true,
+    filter: (source) => !source.split(path.sep).includes('.git'),
+  });
 
   try {
   const suffix = process.pid.toString(36);

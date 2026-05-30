@@ -4,6 +4,7 @@ import {
   findIssue,
   parseArgs,
   parseFrontmatter,
+  readCurrent,
   syncStarterStateViews,
   updateCurrent,
 } from './pokit-project-contract.mjs';
@@ -22,6 +23,15 @@ if (!issueId) {
 try {
   const found = await findIssue(root, issueId);
   if (!found) throw new Error(`Issue not found: ${issueId}`);
+  const { frontmatter: current } = await readCurrent(root);
+  const currentIssue = current.active_issue ?? null;
+  const currentGateState = current.gate_state ?? 'idle';
+  if (currentIssue && currentIssue !== issueId && currentGateState !== 'gate_passed') {
+    throw new Error(
+      `Cannot switch from active issue ${currentIssue} to ${issueId} while gate_state is ${currentGateState}. ` +
+      'Finish the current issue and set gate_state to gate_passed first.'
+    );
+  }
   const text = await readFile(path.join(root, found.relativePath), 'utf8');
   const fm = parseFrontmatter(text);
   await updateCurrent(root, {

@@ -14,6 +14,8 @@ Issue execution owns implementation and gate evidence. It does not create or gro
 
 Public contract tokens: `pokit.issue`, `pokit.backlog`, `routing_decision`, `Execution approval`, `Worker authorization`, `Worker Tasks`, `fan-out`, `Workflow Trace`, `Fallback reason`, `Post-change review`, `Review findings`, `Verification`, `gate evidence`.
 
+Worker authorization is not proof that workers actually ran. Do not claim automatic subagent spawn unless a supported runtime adapter exists and leaves execution evidence. If no supported runtime adapter is available, record `Workers: none (narrow fallback)` and `Fallback reason`.
+
 After `b` or `자동`, record execution evidence before implementation:
 
 ```text

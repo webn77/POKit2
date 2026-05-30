@@ -20,6 +20,17 @@ Use this skill when the user wants to create, modify, groom, or clarify issue de
 5. Run `node scripts/pokit-doctor.mjs`.
 6. Report changed files, Verification evidence, gate evidence boundary, and the next action.
 
+Beginner CLI flow after approval:
+
+```bash
+node scripts/pokit-issue-create.mjs --title "<issue title>"
+node scripts/pokit-list-issues.mjs
+node scripts/pokit-issue-use.mjs <ISSUE-ID>
+node scripts/pokit-doctor.mjs
+```
+
+Use `pokit-issue-create` for issue creation receipts, `pokit-list-issues` to confirm the available IDs, and `pokit-issue-use` to select the ready issue. Do not imply a mutation receipt exists unless one of the starter scripts or an explicit manual trace actually created it.
+
 ## Output
 
 Return a short Korean summary by default:

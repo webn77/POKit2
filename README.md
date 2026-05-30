@@ -27,7 +27,7 @@ Use this for a fresh project.
 mkdir my-project
 cd my-project
 
-VERSION=v0.12.0-rc.5
+VERSION=v0.12.0-rc.6
 curl -L -o pokit-starter.tar.gz \
   "https://github.com/dongwonlee222/POKit2/releases/download/${VERSION}/pokit-starter-${VERSION}.tar.gz"
 

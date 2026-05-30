@@ -10,6 +10,8 @@ Recommended flow:
 4. Update `.ai-os/current.md` and status surfaces.
 5. Run `node scripts/pokit-doctor.mjs`.
 
+`node scripts/pokit-issue-use.mjs` blocks switching away from a non-gate_passed active issue. Do not describe `pokit.next` as a bypass; it only transitions after gate evidence exists.
+
 Next work changes focus. It does not bypass gate evidence.
 
 Public contract tokens: `pokit.next`, `pokit.issue`, `pokit.backlog`, `gate_passed`, `Verification`, `gate evidence`.
