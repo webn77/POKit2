@@ -11,3 +11,7 @@ Recommended flow:
 5. Run `node scripts/pokit-doctor.mjs`.
 
 Clarification work reduces ambiguity before execution starts.
+
+Public contract tokens: `pokit.clarify`, `pokit.backlog`, `pokit.issue`, `[NEEDS CLARIFICATION:]`, `Verification`, `gate evidence`.
+
+Use `pokit.backlog` for approved definition changes and return to `pokit.issue` only after blocking ambiguity is resolved.

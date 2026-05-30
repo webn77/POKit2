@@ -17,7 +17,7 @@ Every release Harness Issue must include README freshness in its Acceptance Crit
 
 ## Release Identity
 
-- Version: `v0.12.0-rc.4`
+- Version: `v0.12.0-rc.5`
 - Type: release candidate
 - Date: 2026-05-30
 - Status before external actions: `pending`
@@ -26,7 +26,7 @@ This prepares a public POKit2 starter release candidate. External install QA mus
 
 ## Artifact
 
-- File: `release/pokit-starter-v0.12.0-rc.4.tar.gz`
+- File: `release/pokit-starter-v0.12.0-rc.5.tar.gz`
 - Source boundary: `starter-manifest.yaml` include entries only
 - Mapping: `starter/.ai-os/**` -> `.ai-os/**`; `starter/.claude/**` -> `.claude/**`; `starter/scripts/**` -> `scripts/**`
 - User runtime: runner, doctor, issue-create, list-issues, list-evidence, measure-startup, sprint-close, starter smoke test
@@ -36,7 +36,7 @@ Record byte size and SHA-256 again immediately before upload if the archive is r
 
 ## Preflight
 
-- [x] `node scripts/pokit-create-starter-archive.mjs release/pokit-starter-v0.12.0-rc.4.tar.gz`
+- [x] `node scripts/pokit-create-starter-archive.mjs release/pokit-starter-v0.12.0-rc.5.tar.gz`
 - [x] `node scripts/pokit-starter-self-test.mjs`
 - [x] Extracted archive runner passes.
 - [x] Extracted archive doctor passes.

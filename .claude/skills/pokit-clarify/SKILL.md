@@ -9,6 +9,7 @@ Use this skill when issue requirements, acceptance criteria, or gate expectation
 - Mark unresolved ambiguity with `[NEEDS CLARIFICATION:]`.
 - Do not execute unclear work as if it were ready.
 - Run doctor after updating issue text.
+- Public contract tokens: `pokit.clarify`, `pokit.backlog`, `pokit.issue`, `[NEEDS CLARIFICATION:]`, `Verification`, `gate evidence`.
 
 ## Workflow
 
@@ -17,6 +18,7 @@ Use this skill when issue requirements, acceptance criteria, or gate expectation
 3. Ask focused questions or propose precise wording.
 4. Update the issue only after user approval.
 5. Run `node scripts/pokit-doctor.mjs`.
+6. Do not route to `pokit.issue` until required clarification is resolved; use `pokit.backlog` for definition changes.
 
 ## Output
 
@@ -26,3 +28,4 @@ Return:
 - remaining ambiguity, if any
 - verification evidence
 - next recommended skill
+- gate evidence boundary

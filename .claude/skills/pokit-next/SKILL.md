@@ -8,6 +8,7 @@ Use this skill when the current issue has passed its gate and the user wants to 
 - Move only after gate evidence exists.
 - Preserve user-created issue state.
 - Keep next issue selection explainable.
+- Public contract tokens: `pokit.next`, `pokit.issue`, `pokit.backlog`, `gate_passed`, `Verification`, `gate evidence`.
 
 ## Workflow
 
@@ -17,6 +18,7 @@ Use this skill when the current issue has passed its gate and the user wants to 
 4. Update `.ai-os/current.md` and status surfaces.
 5. Run `node scripts/pokit-doctor.mjs`.
 6. Present the new active issue and next action.
+7. Hand execution back to `pokit.issue`; use `pokit.backlog` if the next candidate needs definition changes.
 
 ## Output
 

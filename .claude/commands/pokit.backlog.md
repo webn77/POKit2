@@ -11,3 +11,7 @@ Recommended flow:
 5. Run `node scripts/pokit-doctor.mjs`.
 
 Backlog work prepares issues. It does not claim execution gates.
+
+Public contract tokens: `pokit.backlog`, `pokit.issue`, `routing_decision`, `PO approval`, `mutation receipt`, `Verification`, `gate evidence`.
+
+Before durable mutation, confirm PO approval and leave a mutation receipt for issue creation, issue modification, grooming, definition changes, or readiness transitions.

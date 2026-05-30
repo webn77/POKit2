@@ -9,15 +9,16 @@ Use this skill when the user wants to create, modify, groom, or clarify issue de
 - Recommend issue changes before writing files.
 - Keep work scoped to issue definition, acceptance criteria, readiness, dependencies, and backlog order.
 - Do not perform implementation work or claim gates from this skill.
+- Public contract tokens: `pokit.backlog`, `pokit.issue`, `routing_decision`, `PO approval`, `mutation receipt`, `Verification`, `gate evidence`.
 
 ## Workflow
 
 1. Identify the request class: new issue, issue update, acceptance criteria, readiness, dependency, or sprint placement.
 2. Inspect the relevant `.ai-os` issue/index files.
 3. Produce a concise recommendation.
-4. After approval, edit the relevant issue state.
+4. After PO approval, write a `routing_decision` and mutation receipt before durable issue creation, modification, grooming, or readiness changes.
 5. Run `node scripts/pokit-doctor.mjs`.
-6. Report changed files and verification evidence.
+6. Report changed files, Verification evidence, gate evidence boundary, and the next action.
 
 ## Output
 
