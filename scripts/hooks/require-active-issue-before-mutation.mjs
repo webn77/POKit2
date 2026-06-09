@@ -20,6 +20,7 @@
 
 import { hasActiveIssue, renderDraftCard } from '../active-issue-guard.mjs';
 import { ISSUE_ID_PATTERN } from '../pokit-project-contract.mjs';
+import { classifyTaskScope, TASK_SCOPE } from '../lib/task-scope-classifier.mjs';
 
 // ── durable 경로 분류 ──────────────────────────────────────────────────────────
 
@@ -169,10 +170,12 @@ export function decide(payload) {
     isDurable = isDurableBashCommand(cmd);
     workSummary = `Bash: ${cmd.slice(0, 80)}${cmd.length > 80 ? '...' : ''}`;
   } else if (toolName === 'Task') {
-    // Task 도구 = 워커 분배 = durable 의도
-    isDurable = true;
+    const taskScope = classifyTaskScope(payload);
+    // Hook allow/deny is not runtime execution proof. Only explicit read_only
+    // exploration bypasses the active-issue durable-work guard; unknown stays guarded.
+    isDurable = taskScope !== TASK_SCOPE.READ_ONLY;
     const desc = toolInput.description ?? toolInput.prompt ?? 'Task 실행';
-    workSummary = `Task: ${String(desc).slice(0, 80)}`;
+    workSummary = `Task(${taskScope}): ${String(desc).slice(0, 80)}`;
   }
 
   if (!isDurable) {

@@ -111,6 +111,16 @@ tests/
 
 The development repository has many more `scripts/lib` modules, hooks, adapters, and regression tests. Those are POKit2 development machinery, not required starter payload. Public starter commands are kept standalone so a new user can run doctor, smoke test, evidence listing, metrics measurement, and retro setup without inheriting internal work history.
 
+## Root Folder Policy
+
+Top-level folders are intentional contract surfaces:
+
+- `.githooks/`: local git hook entrypoints for commit, push, and gate hygiene.
+- `bin/`: installable CLI entrypoint.
+- `contracts/`: durable repository contracts referenced by contract tests.
+- `issues/`: project-local starter/runtime issue scaffold for non-dev projects.
+- `.pokit/`: local runtime state such as config, sessions, locks, project state, and handoff mirrors. This directory may exist during development but its runtime files are not source artifacts and must stay ignored unless a public example is explicitly whitelisted.
+
 ## Verification Layers
 
 POKit2 uses multiple verification layers:

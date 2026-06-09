@@ -39,6 +39,16 @@ const EXECUTION_REQUEST_PHRASES = [
   '오케이 해줘',
 ];
 
+const TRANSITION_REQUEST_PHRASES = [
+  '/pokit.next',
+  '다음으로',
+  '1번',
+  '제안대로',
+  '바로 이어',
+  '이어서 진행',
+  '다음 진행해줘',
+];
+
 // Ported verbatim from scripts/pokit-runner.mjs lines 92-99.
 const EXECUTION_MODE_SELECTIONS = Object.freeze({
   a: Object.freeze({ mode: 'manual-confirm', worker_authorization: 'not_required' }),
@@ -135,9 +145,33 @@ function matchesExecutionRequestPhrase(text) {
   );
 }
 
+function matchesTransitionRequestPhrase(text) {
+  const normalized = text.toLocaleLowerCase('ko-KR').replace(/\s+/g, '');
+  return TRANSITION_REQUEST_PHRASES.some(
+    (entry) => entry.toLocaleLowerCase('ko-KR').replace(/\s+/g, '') === normalized,
+  );
+}
+
 export function classifyPokitCommand(phrase) {
   const raw = typeof phrase === 'string' ? phrase.trim() : '';
   const lower = raw.toLocaleLowerCase('ko-KR');
+
+  if (matchesTransitionRequestPhrase(raw)) {
+    return {
+      kind: 'transition_request',
+      command: raw,
+      raw,
+      mutates_state: false,
+      requires_human_approval: true,
+      output_fields: [
+        'command',
+        'active_issue',
+        'issue_path',
+        'next_transition_card',
+        'approval_required',
+      ],
+    };
+  }
 
   // Ported from scripts/pokit-runner.mjs lines 227-262.
   // Plain execution-approval synonyms (e.g. "진행해줘", "고", "고고").
@@ -249,7 +283,7 @@ export async function runPreflight({ root = process.cwd(), phrase = '$pokit' } =
 
   // ── D3: execution_request + no active_issue → blocking_draft card ──────────
   // ── AC3: execution_request + active_issue exists → pre_execution_preview card ──
-  if (command.kind === 'execution_request') {
+  if (command.kind === 'execution_request' || command.kind === 'transition_request') {
     const activeExists = await hasActiveIssue(root);
     if (!activeExists) {
       const workSummary = command.target_issue
@@ -274,7 +308,6 @@ export async function runPreflight({ root = process.cwd(), phrase = '$pokit' } =
         nextAction: '이슈 생성 후 실행하세요: node scripts/pokit-issue-create.mjs --title "<제목>"',
       };
     } else {
-      // AC3: active issue exists → return pre-execution preview card (a/b/c selection)
       const currentText = await readFile(path.join(root, '.ai-os/current.md'), 'utf8');
       const current = parseFrontmatter(currentText);
       const activeIssue = current.active_issue ?? null;
@@ -289,6 +322,32 @@ export async function runPreflight({ root = process.cwd(), phrase = '$pokit' } =
           // File may not exist yet; proceed with empty issue.
         }
       }
+      const gateState = current.gate_state ?? issue.gate_state ?? null;
+      if (gateState === 'gate_passed' || command.kind === 'transition_request') {
+        const nextCard = buildNextTransitionRequiredCardFields({
+          activeIssue,
+          issue,
+          gateState,
+          command,
+        });
+        const renderedNextCard = renderNextTransitionRequiredCard({ nextCard });
+        return {
+          status: 'ok',
+          phraseMatched: false,
+          command,
+          activeIssue,
+          issuePath,
+          runnerAssignment: resolveRunnerAssignment(issue),
+          lifecycleCard: nextCard,
+          renderedLifecycleCard: renderedNextCard,
+          doctor: null,
+          counts: null,
+          warnings: [],
+          failures: [],
+          nextAction: nextCard.fields?.next_step ?? null,
+        };
+      }
+      // AC3: active issue exists and is not gate_passed → return pre-execution preview card (a/b/c selection)
       const previewCard = buildPreExecutionPreviewCardFields({ activeIssue, issue, issueText });
       const renderedPreExecutionPreviewCard = renderPreExecutionPreviewCard({ previewCard });
       return {
@@ -317,11 +376,37 @@ export async function runPreflight({ root = process.cwd(), phrase = '$pokit' } =
     const activeIssue = current.active_issue ?? null;
     const issuePath = activeIssue ? await resolveIssuePath(activeIssue, root) : null;
     const issue = issuePath ? await readIssueFrontmatter(root, issuePath) : {};
+    const gateState = current.gate_state ?? issue.gate_state ?? null;
+
+    if (gateState === 'gate_passed') {
+      const nextCard = buildNextTransitionRequiredCardFields({
+        activeIssue,
+        issue,
+        gateState,
+        command,
+      });
+      const renderedNextCard = renderNextTransitionRequiredCard({ nextCard });
+      return {
+        status: 'ok',
+        phraseMatched: false,
+        command,
+        activeIssue,
+        issuePath,
+        runnerAssignment: resolveRunnerAssignment(issue),
+        lifecycleCard: nextCard,
+        renderedLifecycleCard: renderedNextCard,
+        doctor: null,
+        counts: null,
+        warnings: [],
+        failures: [],
+        nextAction: nextCard.fields?.next_step ?? null,
+      };
+    }
 
     const checklistCard = buildExecutionReasoningChecklistFields({
       command,
       activeIssue,
-      gateState: current.gate_state ?? issue.gate_state ?? null,
+      gateState,
       issueStatus: issue.status ?? current.status ?? null,
       issue,
     });
@@ -463,6 +548,61 @@ function buildBlockingDraftCardFields({ workSummary = '', draftCardText = '' } =
 function renderBlockingDraftCard({ blockingCard = {} } = {}) {
   const draftText = blockingCard.draft_card_text ?? '';
   return draftText;
+}
+
+function buildNextTransitionRequiredCardFields({
+  activeIssue = null,
+  issue = {},
+  gateState = null,
+  command = {},
+} = {}) {
+  const passed = gateState === 'gate_passed';
+  return {
+    card_type: 'next_transition_required',
+    title: passed ? '⚠️ 다음 이슈 전환 필요' : '⚠️ pokit-next 실행 조건 미충족',
+    display_only: true,
+    approval_required: true,
+    approves_status_transition: false,
+    approves_release_scope_inclusion: false,
+    approves_durable_work: false,
+    approves_external_write: false,
+    approves_gate_pass: false,
+    fields: {
+      current: {
+        issue: activeIssue ?? issue.id ?? null,
+        title: issue.title ?? null,
+        gate_state: gateState,
+      },
+      request: command.raw ?? command.command ?? null,
+      message: passed
+        ? '완료된 이슈에는 pokit.issue 실행 preview나 b 실행 모드를 다시 열지 않습니다.'
+        : '현재 이슈가 gate_passed가 아니라서 pokit-next로 전환할 수 없습니다.',
+      next_step: passed
+        ? '다음 이슈를 선택한 뒤 node scripts/pokit-issue-use.mjs <ISSUE-ID>로 전환하세요.'
+        : '현재 이슈를 먼저 완료하거나 /pokit.issue 실행 preview로 돌아가세요.',
+    },
+  };
+}
+
+function renderNextTransitionRequiredCard({ nextCard = {} } = {}) {
+  const fields = nextCard.fields ?? {};
+  const current = fields.current ?? {};
+  return stripRightSideBorders([
+    `╭─ ${nextCard.title ?? '⚠️ 다음 이슈 전환 필요'}`,
+    '│',
+    '│ 현재',
+    `│   이슈      ${valueOrFallback(current.issue)}`,
+    `│   제목      ${valueOrFallback(current.title)}`,
+    `│   게이트    ${valueOrFallback(current.gate_state)}`,
+    '│',
+    '│ 라우팅',
+    `│   요청      ${valueOrFallback(fields.request)}`,
+    `│   판단      ${valueOrFallback(fields.message)}`,
+    '│',
+    '├─ 다음',
+    `│   pokit-next: ${valueOrFallback(fields.next_step)}`,
+    '╰─',
+  ].join('\n'));
 }
 
 // ── Pre-execution preview card (D6, ported from dev runner lines 690-737) ────

@@ -326,14 +326,49 @@ test('훅 decide: Bash ls → allow (read-only)', async () => {
   assert.equal(result.decision, 'allow', 'ls is read-only → allow');
 });
 
-test('훅 decide: Task 도구 → check_active_issue (durable 의도)', async () => {
+test('훅 decide: Task write_scoped 도구 → check_active_issue (durable 의도)', async () => {
   const { decide } = await import(
     path.join(STARTER_ROOT, 'scripts/hooks/require-active-issue-before-mutation.mjs')
   );
 
-  const payload = { tool_name: 'Task', tool_input: { description: '코드 구현' } };
+  const payload = { tool_name: 'Task', tool_input: { task_scope: 'write_scoped', description: '코드 구현' } };
   const result = decide(payload);
-  assert.equal(result.decision, 'check_active_issue', 'Task is durable');
+  assert.equal(result.decision, 'check_active_issue', 'write_scoped Task is durable');
+});
+
+test('훅 decide: 명시적 read_only Task → allow', async () => {
+  const { decide } = await import(
+    path.join(STARTER_ROOT, 'scripts/hooks/require-active-issue-before-mutation.mjs')
+  );
+
+  const payload = { tool_name: 'Task', tool_input: { task_scope: 'read_only', description: 'READ-ONLY: return data only, do not modify files' } };
+  const result = decide(payload);
+  assert.equal(result.decision, 'allow', 'explicit read_only Task is non-durable');
+});
+
+test('훅 decide: 모호한 review Task → check_active_issue', async () => {
+  const { decide } = await import(
+    path.join(STARTER_ROOT, 'scripts/hooks/require-active-issue-before-mutation.mjs')
+  );
+
+  const payload = { tool_name: 'Task', tool_input: { description: 'review the hook implementation' } };
+  const result = decide(payload);
+  assert.equal(result.decision, 'check_active_issue', 'ambiguous review Task remains guarded');
+});
+
+test('훅 decideAsync: active issue 없는 read_only Task → allow', async () => {
+  const { decideAsync } = await import(
+    path.join(STARTER_ROOT, 'scripts/hooks/require-active-issue-before-mutation.mjs')
+  );
+
+  const payload = { tool_name: 'Task', tool_input: { can_write: false, description: 'READ-ONLY: inspect state, do not edit' } };
+  const isolatedRoot = await mkdtemp(path.join(tmpdir(), 'pokit-readonly-task-'));
+  try {
+    const result = await decideAsync(payload, isolatedRoot);
+    assert.equal(result.decision, 'allow', 'read_only Task should not require active_issue');
+  } finally {
+    await rm(isolatedRoot, { recursive: true, force: true });
+  }
 });
 
 test('훅 decide: 부트스트랩 화이트리스트 — pokit-issue-create Bash → allow', async () => {

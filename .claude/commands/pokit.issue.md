@@ -19,6 +19,8 @@ Public contract tokens: `pokit.issue`, `pokit.backlog`, `routing_decision`, `Exe
 
 Worker authorization is not proof that workers actually ran. Do not claim automatic subagent spawn unless a supported runtime adapter exists and leaves execution evidence. If no supported runtime adapter is available, record `Workers: none (narrow fallback)` and `Fallback reason`.
 
+Runtime support claims must follow `docs/v0.16.0/runtime-capability-matrix.md`; command routing, Skill activation, and `b` authorization do not prove runtime worker execution.
+
 After `b` or `자동`, record execution evidence before implementation:
 
 ```text

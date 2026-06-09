@@ -2,6 +2,22 @@
 
 This public changelog tracks the sanitized starter kit only. Internal development issues, sprint memory, receipts, and work history are intentionally excluded from the public starter.
 
+## [0.16.0] - 2026-06-09
+
+### Added
+
+- Handoff rotation policy: 스프린트 없는 프로젝트의 handoff.md 회전 기준 정책 (T1 이슈 완료 건수, T2 날짜 주기, T3 크기 임계값).
+- `pokit-issue-create`: `--project` 미지정 시 `.ai-os/current.md`의 `active_project`를 자동으로 기본값으로 사용.
+
+### Changed
+
+- Starter version bumped to `0.16.0`.
+
+### Not Included
+
+- Runner automatic handoff rotation (requires separate PO approval per session).
+- Public push, tag, GitHub release, or package-registry publish without separate approval.
+
 ## [0.15.0] - 2026-06-04
 
 ### Added

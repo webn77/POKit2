@@ -10,6 +10,7 @@ release/*/
 .pokit/.env
 .pokit/.env.*
 !.pokit/.env.example
+.pokit/config.json
 .pokit/sessions/
 .pokit/locks/
 .pokit/project-state.json
