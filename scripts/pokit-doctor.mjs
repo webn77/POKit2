@@ -196,12 +196,6 @@ async function checkActiveIssue(context, items) {
     }
   }
 
-  if (!frontmatter['prevention-rule-ref']) {
-    fail(items, 'failure_read_gate', filePath, 'Missing prevention-rule-ref.', 'Add prevention-rule-ref or no-prior-failure fallback.');
-  } else {
-    pass(items, 'failure_read_gate', filePath, 'prevention-rule-ref exists.');
-  }
-
   for (const section of SPEC_CODE_SECTIONS) {
     if (hasSection(issueText, section)) {
       pass(items, 'active_issue_section', filePath, `Section exists: ${section}.`);

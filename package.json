@@ -1,0 +1,10 @@
+{
+  "name": "pokit2-starter",
+  "version": "0.18.0",
+  "description": "POKit2 starter — issue-driven AI work harness (one-line installer)",
+  "type": "module",
+  "license": "MIT",
+  "bin": {
+    "pokit2-starter": "scripts/pokit-init.mjs"
+  }
+}

@@ -1,6 +1,6 @@
 .DS_Store
 ai-os
-/.ai-os/runs
+# .ai-os/runs is tracked on purpose: run metrics are gate evidence (audit trail).
 node_modules/
 package-lock.json
 release/*/

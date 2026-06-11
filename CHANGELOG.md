@@ -2,6 +2,26 @@
 
 This public changelog tracks the sanitized starter kit only. Internal development issues, sprint memory, receipts, and work history are intentionally excluded from the public starter.
 
+## [0.18.0] - 2026-06-11
+
+### Added
+
+- One-line installer: `npx github:dongwonlee222/POKit2` installs the starter into the current directory. Refuses to overwrite existing files (opt-in `--force`), then points to `node scripts/pokit-doctor.mjs` for the first check.
+- Starter `package.json` with the `pokit2-starter` bin entry point backing the npx flow.
+
+### Changed
+
+- Starter version bumped to `0.18.0`.
+- Skill instruction contracts compacted (governance diet) — same boundaries, less procedural prose.
+- Starter marker guard hardened so packaging drift fails the self-test instead of shipping silently.
+
+### Not Included
+
+- npm registry package (`npx pokit2`) — GitHub-based install only in this release.
+- Public push, tag, GitHub release, or package-registry publish without separate approval.
+
+---
+
 ## [0.16.0] - 2026-06-09
 
 ### Added

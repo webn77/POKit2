@@ -19,13 +19,34 @@ POKit2 is not a hosted dashboard and it is not a package-registry install. It is
 
 ## Quick Install
 
-### Option A. Local v0.15 Starter Archive
+### Option A. npx One-Line Installer (Recommended)
 
-Use this when you have this repository locally and want to install the current v0.15 starter into a fresh project.
+The fastest way to install the v0.18.0 starter into a fresh project:
+
+```bash
+mkdir my-project && cd my-project
+npx github:dongwonlee222/POKit2
+```
+
+This installs all starter files into the current directory. If any file already exists, the installer stops without overwriting anything — use `--force` only when you intentionally want to overwrite. After install, run the doctor to confirm the setup:
+
+```bash
+node scripts/pokit-doctor.mjs
+```
+
+Then open the project in Claude Code and start with:
+
+```text
+포킷 시작
+```
+
+### Option B. Local v0.18 Starter Archive
+
+Use this when you have this repository locally and want to install the current v0.18 starter into a fresh project.
 
 ```bash
 mkdir my-project
-tar -xzf /path/to/pokit2/release/pokit-starter-v0.15.0.tar.gz -C my-project
+tar -xzf /path/to/pokit2/release/pokit-starter-v0.18.0.tar.gz -C my-project
 
 cd my-project
 node scripts/pokit-runner.mjs "포킷 시작"
@@ -43,15 +64,15 @@ active project: common
 active issue: none yet
 ```
 
-### Option B. GitHub Release Archive
+### Option C. GitHub Release Archive
 
-Use this after a v0.15 GitHub release has been explicitly published.
+Use this after a v0.18 GitHub release has been explicitly published.
 
 ```bash
 mkdir my-project
 cd my-project
 
-VERSION=v0.15.0
+VERSION=v0.18.0
 curl -L -o pokit-starter.tar.gz \
   "https://github.com/dongwonlee222/POKit2/releases/download/${VERSION}/pokit-starter-${VERSION}.tar.gz"
 
@@ -60,9 +81,9 @@ node scripts/pokit-runner.mjs "포킷 시작"
 node scripts/pokit-doctor.mjs
 ```
 
-As of the v0.15 release, the archive exists at `release/pokit-starter-v0.15.0.tar.gz` and is published through the public GitHub release after PO approval.
+As of the v0.18 release, the archive exists at `release/pokit-starter-v0.18.0.tar.gz` and is published through the public GitHub release after PO approval.
 
-### Option C. Clone The Public Starter
+### Option D. Clone The Public Starter
 
 Use this after the public repository has been updated to the desired release.
 
@@ -73,7 +94,7 @@ node scripts/pokit-runner.mjs "포킷 시작"
 node scripts/pokit-doctor.mjs
 ```
 
-### Option D. Manual Copy
+### Option E. Manual Copy
 
 Use manual copy only when you understand the starter boundary.
 
@@ -190,7 +211,7 @@ From there, the normal work loop is:
 
 The source repository also has a richer local `pokit` package surface for development and smoke testing. The public starter archive intentionally ships standalone starter scripts first; package-registry publishing remains out of scope until separately approved.
 
-## v0.15 Concept Quick Map
+## Concept Quick Map
 
 | Concept | What it means for a user |
 |---|---|
