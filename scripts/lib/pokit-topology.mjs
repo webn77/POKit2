@@ -2,9 +2,10 @@
  * pokit-topology.mjs — 프로젝트 잔류(residue) 설치/마이그레이션 라이브러리
  *
  * 규칙 (topology-spec §2·§3·§4):
- *  - 잔류 4종: AGENTS.md, .claude/skills/pokit-* SKILL.md, .ai-os/ 시드, pokit_version
- *  - 사용자 소유(.ai-os/ 상태, AGENTS.md 마커 밖)는 절대 보존
- *  - 도구 소유(마커 블록 안, skills)는 regenerate=true 시 덮어쓰기
+ *  - 잔류 5종: AGENTS.md, .claude/skills/pokit-* SKILL.md, .ai-os/ 시드, pokit_version,
+ *    .claude/settings.json(안전바닥 훅 배선 — POK-347, PO 승인 2026-06-15)
+ *  - 사용자 소유(.ai-os/ 상태, AGENTS.md 마커 밖, settings.json 사용자 훅)는 절대 보존
+ *  - 도구 소유(마커 블록 안, skills, 안전바닥 훅 항목)는 regenerate=true 시 덮어쓰기
  *
  * 이 모듈은 순수 lib — packageRoot와 version은 항상 인자로 받는다.
  * process.env·import.meta.url 의존 없음.
@@ -14,6 +15,7 @@ import { copyFile, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs
 import path from 'node:path';
 
 import { parseFrontmatter } from './issue-frontmatter.mjs';
+import { mergeFloorIntoSettings } from './hook-floor.mjs';
 
 // ---------------------------------------------------------------------------
 // Public constants
@@ -220,6 +222,45 @@ async function writeAiOsSeed(projectRoot, packageRoot) {
   return { written, skipped };
 }
 
+/**
+ * Write or merge the thin-project safety-floor hooks into .claude/settings.json (POK-347).
+ *
+ * 멱등 병합: 안전바닥 훅(pokit hook-floor)을 보장하되 사용자가 직접 추가한 훅은 보존한다.
+ *  - 파일 없음 → 안전바닥만 생성 ('written')
+ *  - 파일 있고 내용 변경 필요 → 병합 후 갱신 ('updated')
+ *  - 파일 있고 이미 안전바닥 포함(변경 없음) → 'skipped'
+ *
+ * 프로젝트에 훅 스크립트 파일은 깔지 않는다 — settings.json은 본체를 가리키는 얇은 포인터다.
+ */
+async function writeResidueSettings(projectRoot) {
+  const destPath = path.join(projectRoot, '.claude', 'settings.json');
+  const existingText = await readTextOptional(destPath);
+
+  let existing = null;
+  if (existingText !== null) {
+    try {
+      existing = JSON.parse(existingText);
+    } catch {
+      // 손상된 JSON — 안전바닥은 재생성하되 사용자 내용은 복구 불가하므로 새로 쓴다.
+      // 사일런트 손실 방지: 사용자가 인지할 수 있게 stderr로 경고한다.
+      process.stderr.write(
+        `[pokit] 경고: ${destPath} 가 올바른 JSON이 아닙니다 — 안전바닥 훅으로 새로 씁니다. ` +
+          '기존 사용자 설정이 있었다면 보존되지 않습니다.\n',
+      );
+      existing = null;
+    }
+  }
+
+  const merged = mergeFloorIntoSettings(existing);
+  const nextText = `${JSON.stringify(merged, null, 2)}\n`;
+
+  if (existingText === nextText) return 'skipped';
+
+  await mkdir(path.dirname(destPath), { recursive: true });
+  await writeFile(destPath, nextText, 'utf8');
+  return existingText === null ? 'written' : 'updated';
+}
+
 // ---------------------------------------------------------------------------
 // pokit_version frontmatter write (line-level replacement)
 // ---------------------------------------------------------------------------
@@ -295,6 +336,12 @@ export async function writeResidue(projectRoot, { packageRoot, version, regenera
   // 4. pokit_version in .ai-os/current.md frontmatter
   const currentMdPath = path.join(projectRoot, '.ai-os', 'current.md');
   await setPokitVersionInFile(currentMdPath, version);
+
+  // 5. .claude/settings.json — 안전바닥 훅 배선 (POK-347, residue +1, PO 승인 2026-06-15).
+  //    프로젝트엔 훅 스크립트 0개; 훅 명령은 `pokit hook-floor`로 글로벌 본체를 참조한다.
+  const settingsStatus = await writeResidueSettings(projectRoot);
+  if (settingsStatus === 'skipped') skipped.push('.claude/settings.json');
+  else written.push(`.claude/settings.json (${settingsStatus})`);
   // current.md may already have been counted in aiOsResult — record version write separately
   if (!written.includes('.ai-os/current.md') && !preserved.includes('.ai-os/current.md')) {
     written.push('.ai-os/current.md (pokit_version)');
@@ -414,6 +461,7 @@ export async function planMigration(projectRoot, { packageRoot }) {
     '.claude/skills/pokit-*/ (regenerate)',
     '.ai-os/ (seed only for missing files)',
     '.ai-os/current.md pokit_version field',
+    '.claude/settings.json (safety-floor hooks, merged — user hooks preserved)',
   ];
 
   return { remove, preserve, residue };

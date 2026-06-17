@@ -5,6 +5,7 @@ import { execFile } from 'node:child_process';
 
 import { EVENT_NAME, buildAfterGatePassPayload } from './hook-emit.mjs';
 import { extractIssueId, ISSUE_ID_SOURCE } from './issue-id.mjs';
+import { emitProgress } from './event-log.mjs';
 
 const exec = promisify(execFile);
 
@@ -38,6 +39,26 @@ export async function appendAfterGatePassEvent({
 } = {}) {
   const payload = buildAfterGatePassPayload({ issueId, env, now });
   const emittedAt = payload.emitted_at;
+
+  // Idempotency guard: emit at most once per (issue_id, gate_state).
+  // gate_state is hardcoded to 'gate_passed' in buildAfterGatePassPayload,
+  // so this is effectively once-per-issue-forever (AC4).
+  const existingEvents = await readAfterGatePassEvents({ root });
+  const alreadyEmitted = existingEvents.some(
+    (event) =>
+      String(event.issue_id).toUpperCase() === String(payload.issue_id).toUpperCase() &&
+      event.gate_state === payload.gate_state
+  );
+  if (alreadyEmitted) {
+    return {
+      event_type: EVENT_NAME,
+      event_name: EVENT_NAME,
+      issue_id: payload.issue_id,
+      emitted: false,
+      reason: 'already_emitted',
+    };
+  }
+
   const receipt = {
     event_type: EVENT_NAME,
     event_name: EVENT_NAME,
@@ -77,6 +98,11 @@ export async function runPostCommitHook({
   if (!issueId) return { ok: true, emitted: false, reason: 'not_gate_passed_commit', subject };
 
   const receipt = await appendAfterGatePassEvent({ root, issueId, now, env });
+  if (receipt.emitted === false) {
+    return { ok: true, emitted: false, reason: receipt.reason, issueId, subject };
+  }
+  // POK-354: gate_pass 커밋 완료 진행 마커
+  emitProgress('gate_pass_committed', issueId);
   return { ok: true, emitted: true, issueId, subject, receipt };
 }
 

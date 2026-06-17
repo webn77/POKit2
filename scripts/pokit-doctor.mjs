@@ -18,6 +18,13 @@ import { verifyFailureMemoryConsistency } from './lib/failure-memory.mjs';
 import { listIssueFiles, resolveActiveIssuePath } from './lib/issue-paths.mjs';
 import { parseFrontmatter, resolveIssueSprint } from './lib/issue-frontmatter.mjs';
 import { extractIssueId, isIssueId, ISSUE_ID_SOURCE } from './lib/issue-id.mjs';
+import {
+  requiredSectionsFor,
+  READINESS_CONTENT_SECTIONS,
+  readinessContentGaps,
+  gateContentGaps,
+  evaluatedGateContentSections,
+} from './lib/issue-sections.mjs';
 import { findVagueLanguage } from './lib/vague-language.mjs';
 import { runSubIssueChecks } from './lib/sub-issue-check.mjs';
 import { countGateLogs } from './lib/rule-section.mjs';
@@ -28,6 +35,7 @@ import {
   readAfterGatePassEvents,
 } from './lib/after-gate-pass-natural-hook.mjs';
 import { classifyCommitStatus } from './lib/commit-status.mjs';
+import { listActiveIssueClaims } from './lib/worktree-sessions.mjs';
 import { buildEvidenceIndex } from './lib/derived-index.mjs';
 import { verifyRetroSchema, retroPathFor, isTransitionalImmune } from './lib/retro-schema.mjs';
 import {
@@ -76,26 +84,9 @@ const ISSUE_FRONTMATTER_KEYS = [
   'schema_version',
 ];
 
-const SPEC_CODE_SECTIONS = [
-  'Brief',
-  'Evidence',
-  'Acceptance Criteria',
-  'Development Plan',
-  'Test Plan',
-  'Subagent Plan',
-  'QA',
-  'Gate',
-  'Memory',
-];
-
-const GENERAL_SECTIONS = [
-  'Brief',
-  'Evidence',
-  'Acceptance Criteria',
-  'QA',
-  'Gate',
-  'Memory',
-];
+// SPEC_CODE_SECTIONS / GENERAL_SECTIONS now come from ./lib/issue-sections.mjs
+// (POK-349 single source) — shared with the issue-create generator so the
+// required-section list and the generated skeleton cannot drift apart.
 
 const POKIT_ISSUE_SKILL_CONTRACT_TOKENS = [
   'needs_subagent_authorization',
@@ -185,6 +176,17 @@ const SKILL_INVOCATION_RECEIPT_CUTOFF = '2026-05-31';
 // cutoff as POK-207's execution receipt so already-started cards are not backfilled.
 const ROUTING_DECISION_RECEIPT_CUTOFF = '2026-05-31';
 
+// POK-349 — readiness section-content check binds cards created on/after the
+// v0.20 generation, where the issue-create generator emits the full section
+// skeleton. Earlier cards are grandfathered.
+const READINESS_CONTENT_CUTOFF = '2026-06-12';
+
+// POK-350 — gate-time execution-output content check binds cards created on/after
+// this date (today's natural-path boundary). Every card already at gate_passed was
+// created on/before 2026-06-14, so all are grandfathered and the rule applies only
+// to cards that reach the gate from here forward.
+const GATE_CONTENT_CUTOFF = '2026-06-15';
+
 // POK-216 — ordered runtime proof that pokit.issue stayed in control through
 // runner approval, planning, review, and verification. Issue-number cutoff avoids
 // retroactive failure for already gated cards that predate the checkpoint chain.
@@ -238,6 +240,8 @@ export async function runDoctor({
 
   await checkWorkflowTrace(context.root, items);
   await checkBacklogAuthoredIssues(context.root, items);
+  await checkReadinessSectionContentAll(context.root, items);
+  await checkGateContentSectionAll(context.root, items);
   await checkV010MetricsEvidence(context.root, items, { pass, fail });
   await checkGateEvidenceGitTracking(context.root, items, { pass, fail });
   await checkPokitConfigSecretBoundary(context.root, items);
@@ -912,6 +916,112 @@ function checkBacklogIssueContract(frontmatter, filePath, items) {
   );
 }
 
+// POK-349 — readiness content-satisfaction. checkBacklogIssueContract escalates
+// required FRONTMATTER fields once a card is ready/executable; this is the body
+// counterpart on the same axis. When definition_readiness: pass, the grooming-
+// thinking sections (Brief / Evidence / Acceptance Criteria / Gate) must hold real
+// content, not a bare header or a `(실행 시 채움)` placeholder. The auto-emitted
+// empty skeleton (issue-create) is the natural-path partner of this guard: the
+// generator drops the blank headers, this check refuses to let them stay blank
+// under a ready stamp. Execution-filled sections stay placeholder-OK at ready;
+// their gate-time content check is POK-350.
+//
+// Runs over ALL issue files (not the backlog-authored subset) so v0.20 candidate
+// cards that carry only sprint_candidate — and so fail isBacklogAuthoredIssue's
+// raw frontmatter.sprint test — are still covered. Scope is held by the
+// created_at cutoff + definition_readiness gate inside checkReadinessSectionContent.
+async function checkReadinessSectionContentAll(projectRoot, items) {
+  const { dir, files: issueFiles } = await listIssueFiles(projectRoot);
+  if (issueFiles.length === 0) return;
+  for (const name of issueFiles) {
+    const filePath = `${dir}/${name}`;
+    const text = await readOptional(projectRoot, filePath);
+    if (text === null) continue;
+    const frontmatter = parseFrontmatter(text);
+    checkReadinessSectionContent(frontmatter, text, filePath, items);
+  }
+}
+
+function checkReadinessSectionContent(frontmatter, text, filePath, items) {
+  const ready = frontmatter.definition_readiness === 'pass'
+    || ['accepted', 'in_progress'].includes(frontmatter.status);
+  if (!ready) return;
+
+  // Bind the new natural-path card flow, not retroactively the repo's history
+  // (가드는 길목에). Cards created before the generator emits the full skeleton are
+  // grandfathered — same approach as the routing_decision / authoring receipts.
+  const createdAt = typeof frontmatter.created_at === 'string'
+    ? frontmatter.created_at.slice(0, 10)
+    : null;
+  if (!createdAt || createdAt < READINESS_CONTENT_CUTOFF) {
+    pass(items, 'readiness_section_content', filePath,
+      `${frontmatter.id ?? filePath} grandfathered (created_at ${frontmatter.created_at ?? 'missing'} < cutoff ${READINESS_CONTENT_CUTOFF}); readiness section-content not retroactively required.`);
+    return;
+  }
+
+  const gaps = readinessContentGaps(text);
+  if (gaps.length === 0) {
+    pass(items, 'readiness_section_content', filePath,
+      `ready card has real content in readiness sections: ${READINESS_CONTENT_SECTIONS.join(', ')}.`);
+    return;
+  }
+
+  fail(items, 'readiness_section_content', filePath,
+    `definition_readiness: pass but these sections are empty/placeholder: ${gaps.join(', ')}.`,
+    `Fill ${gaps.join(', ')} with real content during grooming before stamping the card ready (empty headers and (실행 시 채움) placeholders do not count).`
+  );
+}
+
+// POK-350 — gate-time content check. The execution-output mirror of
+// checkReadinessSectionContent, on the same single-source axis (issue-sections.mjs).
+// Required-section PRESENCE is checked at transition (checkActiveIssue); the
+// execution-output receipts' CONTENT is required only here, when a card CLAIMS the
+// gate. A freshly-transitioned pending card with empty QA / Gate / Evidence
+// (verification) therefore never fails — the check is skipped until gate_state
+// becomes gate_passed (POK-350 AC3: 전환 직후 빈칸 허용 / 합격 시점 충족 요구).
+async function checkGateContentSectionAll(projectRoot, items) {
+  const { dir, files: issueFiles } = await listIssueFiles(projectRoot);
+  if (issueFiles.length === 0) return;
+  for (const name of issueFiles) {
+    const filePath = `${dir}/${name}`;
+    const text = await readOptional(projectRoot, filePath);
+    if (text === null) continue;
+    const frontmatter = parseFrontmatter(text);
+    checkGateContent(frontmatter, text, filePath, items);
+  }
+}
+
+function checkGateContent(frontmatter, text, filePath, items) {
+  // Gate-time, not transition-time: only a card that claims gate_passed must back
+  // its execution-output sections with real receipts. Pending/verification_ready
+  // cards are intentionally untouched here.
+  if (frontmatter.gate_state !== 'gate_passed') return;
+
+  // Bind the new natural-path flow, not the repo's history (가드는 길목에). Cards
+  // created before the gate-content rule existed are grandfathered — same approach
+  // as READINESS_CONTENT_CUTOFF and the routing/authoring receipts.
+  const createdAt = typeof frontmatter.created_at === 'string'
+    ? frontmatter.created_at.slice(0, 10)
+    : null;
+  if (!createdAt || createdAt < GATE_CONTENT_CUTOFF) {
+    pass(items, 'gate_section_content', filePath,
+      `${frontmatter.id ?? filePath} grandfathered (created_at ${frontmatter.created_at ?? 'missing'} < cutoff ${GATE_CONTENT_CUTOFF}); gate section-content not retroactively required.`);
+    return;
+  }
+
+  const gaps = gateContentGaps(text);
+  if (gaps.length === 0) {
+    pass(items, 'gate_section_content', filePath,
+      `gate_passed card has real execution-output content: ${evaluatedGateContentSections(text).join(', ')}.`);
+    return;
+  }
+
+  fail(items, 'gate_section_content', filePath,
+    `gate_state: gate_passed but these execution-output sections are empty/placeholder/unchecked: ${gaps.join(', ')}.`,
+    `Fill ${gaps.join(', ')} with real execution receipts before claiming gate_passed (QA needs at least one checked item; (실행 후 박제) placeholders and empty headers do not count).`
+  );
+}
+
 function checkBacklogRoutingDecisionEvidence(frontmatter, filePath, items, routingDecisionMap) {
   const id = frontmatter.id ?? filePath.match(/POK-\d{3}/)?.[0] ?? null;
   const rawCreatedAt = typeof frontmatter.created_at === 'string' ? frontmatter.created_at : null;
@@ -1166,6 +1276,61 @@ async function readIssueMetricsJson(projectRoot, metricsPath) {
   }
 }
 
+/**
+ * Extracts the change scope (file path prefixes) for an issue card.
+ * Prefers `conflict_scope: files:` block in the frontmatter raw text,
+ * then falls back to the union of `allowed_paths:` arrays in the
+ * Worker Tasks YAML code block in the body.
+ * Returns an array of path strings, or [] if none found.
+ */
+async function extractIssueScope(root, issueId) {
+  const issuePath = await resolveActiveIssuePath(root, issueId);
+  if (!issuePath) return [];
+  const text = await readOptional(root, issuePath);
+  if (!text) return [];
+
+  // Try conflict_scope.files from frontmatter raw text.
+  // Matches: "conflict_scope:\n  files:\n    - path\n    - path"
+  // Uses (?=^[^\s]) to stop at the next non-indented line (handles --- and other keys).
+  const conflictScopeMatch = text.match(/^conflict_scope:\s*\n([\s\S]*?)(?=^[^\s])/m);
+  if (conflictScopeMatch) {
+    const filesMatch = conflictScopeMatch[1].match(/^\s{1,4}files:\s*\n([\s\S]*?)(?=^\s{0,4}[A-Za-z]|(?![\s\S]))/m);
+    if (filesMatch) {
+      const paths = [];
+      for (const line of filesMatch[1].split('\n')) {
+        const m = line.match(/^\s*-\s+(.+)$/);
+        if (m) paths.push(m[1].trim());
+      }
+      if (paths.length > 0) return paths;
+    }
+  }
+
+  // Fall back to union of allowed_paths from Worker Tasks YAML blocks.
+  const paths = [];
+  // Match yaml code blocks in the body.
+  const yamlBlockRe = /```yaml\n([\s\S]*?)```/g;
+  let blockMatch;
+  while ((blockMatch = yamlBlockRe.exec(text)) !== null) {
+    const block = blockMatch[1];
+    // Within each block, find allowed_paths: followed by - item lines.
+    const allowedMatch = block.match(/^[ \t]*allowed_paths:\s*\n([\s\S]*?)(?=^[ \t]*[A-Za-z]|(?![\s\S]))/m);
+    if (allowedMatch) {
+      for (const line of allowedMatch[1].split('\n')) {
+        const m = line.match(/^\s*-\s+(.+)$/);
+        if (m) paths.push(m[1].trim());
+      }
+    }
+  }
+  return paths;
+}
+
+/**
+ * Returns true if `filePath` is within `scope` (exact match or under a scope prefix path).
+ */
+function isInScope(filePath, scope) {
+  return scope.some((s) => filePath === s || filePath.startsWith(`${s}/`));
+}
+
 async function checkActiveGatePassedCommitClosure(context, items) {
   const activeIssue = context.currentFrontmatter?.active_issue;
   const gateState = context.currentFrontmatter?.gate_state;
@@ -1173,6 +1338,38 @@ async function checkActiveGatePassedCommitClosure(context, items) {
   if (!await isGitWorkTree(context.root)) return;
 
   const commitStatus = await classifyCommitStatus({ root: context.root });
+
+  // Determine if there are OTHER active claims (multi-session scenario).
+  let otherClaims = [];
+  try {
+    const allClaims = await listActiveIssueClaims(context.root);
+    otherClaims = allClaims.filter((c) => c.issue_id !== activeIssue);
+  } catch {
+    // Registry unavailable → treat as single-session.
+    otherClaims = [];
+  }
+
+  if (otherClaims.length > 0) {
+    // Multi-session: scope the residue check to the active issue's own change scope.
+    const scope = await extractIssueScope(context.root, activeIssue);
+    if (scope.length > 0) {
+      // Only dirty_paths that fall within this issue's scope matter.
+      const scopedDirty = commitStatus.dirty_paths.filter((p) => isInScope(p, scope));
+      if (scopedDirty.length > 0) {
+        fail(items, 'post_gate_commit_closure', '.ai-os/current.md',
+          `${activeIssue} is gate_passed but commit-required changes remain in its scope: ${scopedDirty.join(', ')}.`,
+          'Commit scoped changes or record an explicit deferral before treating the issue as closed.'
+        );
+        return;
+      }
+      pass(items, 'post_gate_commit_closure', '.ai-os/current.md',
+        `${activeIssue} is gate_passed; no scoped residue (multi-session, ${otherClaims.length} other active claim(s)).`);
+      return;
+    }
+    // Scope undeterminable → fall through to whole-tree check (do not silently pass).
+  }
+
+  // Single-session (or scope undeterminable): keep the existing whole-tree strict behavior.
   if (commitStatus.status === 'commit_needed') {
     fail(items, 'post_gate_commit_closure', '.ai-os/current.md',
       `${activeIssue} is gate_passed but commit-required changes remain: ${commitStatus.summary}.`,
@@ -1852,9 +2049,7 @@ async function checkActiveIssue(context, items) {
     }
   }
 
-  const requiredSections = ['spec', 'code'].includes(frontmatter.issue_type)
-    ? SPEC_CODE_SECTIONS
-    : GENERAL_SECTIONS;
+  const requiredSections = requiredSectionsFor(frontmatter.issue_type);
 
   for (const section of requiredSections) {
     if (hasSection(issueText, section)) {

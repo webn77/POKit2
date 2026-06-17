@@ -14,6 +14,7 @@ import {
   renderProjectViews,
 } from './lib/project-state.mjs';
 import { withStateWriteGuard } from './lib/worktree-locks.mjs';
+import { emptySkeletonBody } from './lib/issue-sections.mjs';
 
 function today() {
   return new Date().toISOString().slice(0, 10);
@@ -219,7 +220,12 @@ async function createProjectLocalIssue({
     `updated_at: ${created_at}`,
     '---',
   ].join('\n');
-  const bodySection = body || '\n## Brief\n\n_No brief provided._';
+  // POK-349: emit the full required-section skeleton from the single source
+  // (issue-sections.mjs) — empty headers, no fake fill. A `_No brief provided._`
+  // placeholder would let the doctor's header-presence check pass while masking an
+  // unfilled thinking slot; the readiness content check refuses placeholders, so
+  // the honest default is blank headers the groomer fills in.
+  const bodySection = body || emptySkeletonBody(issueType);
   const cardContent = `${frontmatter}\n\n# ${issueId} ${safeTitle}${bodySection}\n`;
 
   await withStateWriteGuard(root, {

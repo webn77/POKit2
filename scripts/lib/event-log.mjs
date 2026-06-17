@@ -13,6 +13,14 @@ import path from 'node:path';
 // explicit, detectable act), NOT a security wall.
 
 export const EVENT_LOG_REL = '.ai-os/events/event-log.jsonl';
+
+// POK-354: 주요 단계 진행 마커. POKIT_SESSION_ID가 있으면 stderr에 출력해
+// 실행 채널(텔레그램 등)이 진행 상황을 감지할 수 있게 한다.
+export function emitProgress(step, detail = '') {
+  if (!process.env.POKIT_SESSION_ID) return;
+  const msg = detail ? `[pokit:progress] ${step}: ${detail}` : `[pokit:progress] ${step}`;
+  process.stderr.write(`${msg}\n`);
+}
 export const EXECUTION_ENTERED_EVENT = 'issue_execution_entered';
 export const ISSUE_PREFLIGHT_PASS_EVENT = 'issue_preflight_pass';
 export const POST_RUNNER_EXECUTION_LOCK_EVENT = 'post_runner_execution_lock';

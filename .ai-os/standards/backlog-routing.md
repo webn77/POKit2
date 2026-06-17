@@ -95,6 +95,13 @@ cat docs/research/ideas-parking.md
           (작업 의도 생기면 POK 카드 부여 + sprint: backlog)
 ```
 
+### spec 선행 판정 (3 Yes 이후)
+
+신규 카드가 concrete enough(3 Yes)면, 카드 하나로 충분한지 **spec 이슈를 선행**해야 하는지 판정한다.
+판정 기준은 `.ai-os/standards/spec-separation.md`(되돌리기 비용·다중 의존·외부 계약 3종) 하나로만 한다 —
+셋 중 하나라도 해당하면 spec 이슈 선행, 아니면 카드 AC로 충분. `/pokit.backlog`는 scope_routing
+(`single_issue` vs `spec_needed`)을 이 기준으로 결정한다.
+
 ### 3축 input 정의
 
 | 축 | 허용값 |

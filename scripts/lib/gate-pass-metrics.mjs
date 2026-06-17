@@ -4,8 +4,10 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 
 import { recordIssueMetrics, issueMetricsPath } from './issue-metrics.mjs';
+import { collectMainSessionTokens } from './main-token-collector.mjs';
 import { resolveActiveIssuePath } from './issue-paths.mjs';
 import { assertIssueId, isIssueId } from './issue-id.mjs';
+import { emitProgress } from './event-log.mjs';
 
 const execFileAsync = promisify(execFile);
 
@@ -235,6 +237,29 @@ export async function resolveGatePassMetricsOptions({
 
   if (resolved.subagents === undefined && Number(resolved.subagentCount) > 0) {
     resolved.subagents = buildUnknownSubagents(resolved.subagentCount);
+  }
+
+  // POK-344 (POK-259 흡수) — main 세션 토큰을 transcript에서 사후 집계한다.
+  // 실제 runner 실행(POKIT_SESSION_ID 존재)에서만 동작 — 유닛테스트는 env 미설정이라
+  // 기존 미수집(0/false) 기본값을 그대로 유지한다(회귀 방지). 명시 CLI 값 또는 유의미한
+  // 직전 수집값(applyPriorMetrics에서 collected:true)이 있으면 건드리지 않는다.
+  // 측정 불가(transcript 없음/식별 불가)는 collected:false로 — 가짜 0 금지.
+  if (resolved.mainTokensCollected === undefined && process.env.POKIT_SESSION_ID) {
+    try {
+      const mainUsage = await collectMainSessionTokens({ cwd: root });
+      if (mainUsage.main_tokens_collected) {
+        resolved.mainTotalTokens = mainUsage.main_total_tokens;
+        resolved.mainTokensCollected = true;
+      } else {
+        // POK-354: 배선 전 호출 또는 transcript 미가용 — 침묵 대신 경고.
+        process.stderr.write(
+          `warn: main_tokens_collected=false (transcript 미가용 또는 배선 순서 문제 — POKIT_SESSION_ID=${process.env.POKIT_SESSION_ID})\n`
+        );
+      }
+      emitProgress('metrics_collected', String(options.issueId ?? ''));
+    } catch {
+      // 수집 실패는 미수집으로 — 완료 흐름을 막지 않는다.
+    }
   }
 
   return resolved;

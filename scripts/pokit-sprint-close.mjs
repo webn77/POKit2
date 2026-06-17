@@ -7,6 +7,7 @@ import { rotateRuleSection } from './lib/rule-section.mjs';
 import { withStateWriteGuard } from './lib/worktree-locks.mjs';
 import { collectSprintFeedbackModel, renderSprintFeedbackCard } from './lib/feedback-card.mjs';
 import { parseFrontmatter } from './lib/issue-frontmatter.mjs';
+import { checkReleaseGap, renderReleaseGapCard } from './lib/release-gap.mjs';
 
 const VERSION_PATTERN = /^v\d+\.\d+\.\d+$/;
 
@@ -169,6 +170,17 @@ export async function closeSprint({ root = process.cwd(), sprintVersion } = {}) 
     feedbackCard = `피드백 카드 생성 실패: ${error.message}`;
   }
 
+  // POK-356 — 릴리즈 갭 자동 표면화: 마감 시 게시 버전 < 마감 스프린트면 경고.
+  // 실패가 마감 절차를 막지 않는다.
+  let releaseGap = null;
+  let releaseGapCard = null;
+  try {
+    releaseGap = await checkReleaseGap({ root });
+    releaseGapCard = renderReleaseGapCard(releaseGap);
+  } catch {
+    releaseGap = null;
+  }
+
   return {
     archivePath,
     handoffPath: '.ai-os/memory/session/handoff.md',
@@ -176,6 +188,8 @@ export async function closeSprint({ root = process.cwd(), sprintVersion } = {}) 
     retroHints,
     ruleRotation,
     feedbackCard,
+    releaseGap,
+    releaseGapCard,
   };
 }
 

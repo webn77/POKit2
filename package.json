@@ -1,6 +1,6 @@
 {
   "name": "pokit2",
-  "version": "0.19.0",
+  "version": "0.21.0",
   "type": "module",
   "files": [
     "bin/",
@@ -28,6 +28,8 @@
   },
   "scripts": {
     "test": "node --test tests/*.mjs",
+    "prepublish:scan": "node scripts/pokit-prepublish-scan.mjs",
+    "prepublishOnly": "node scripts/pokit-prepublish-scan.mjs",
     "doctor": "node scripts/pokit-doctor.mjs",
     "runner": "node scripts/pokit-runner.mjs \"$PWD\"",
     "smoke:cli": "node bin/pokit.mjs --help",

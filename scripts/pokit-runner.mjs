@@ -4,7 +4,10 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { buildGroupedBacklog, renderGroupedBacklogCard } from './lib/derived-index.mjs';
+import { aggregateDeferredLedger, renderDeferredLedgerCard } from './pokit-deferred-ledger.mjs';
+import { checkReleaseGap, renderReleaseGapCard } from './lib/release-gap.mjs';
 import { resolveAgentProfileDispatch } from './lib/agent-profile-dispatcher.mjs';
+import { emitProgress } from './lib/event-log.mjs';
 import {
   ASSIGNMENT_BY_AGENT_PROFILE,
   DEFAULT_ASSIGNMENT,
@@ -39,6 +42,8 @@ import { runGatePassCommand, parseMetricsArgs, parseBoolFlagValue } from './lib/
 export { runGatePassCommand, parseMetricsArgs, parseBoolFlagValue };
 // POK-327 — 실패 기록·이어가기: record-failure 명령 + 시작 카드 실패 안내.
 import { parseFailureContext, buildFailureNoticeFields, recordFailureContext } from './lib/failure-context.mjs';
+// POK-353 — loop 첫 적용: 자율 이음새 체이닝 + 멈춤조건 4종.
+import { runLoopTick } from './lib/loop-chaining.mjs';
 export { parseFailureContext, buildFailureNoticeFields, recordFailureContext };
 // POK-325 — friction-automation chokepoints: transition card-status sync +
 // definition-change issue_authored reissue, both runner-owned subcommands.
@@ -305,6 +310,8 @@ export function classifyPokitCommand(phrase) {
         'command',
         'backlog_card',
         'rendered_backlog_card',
+        'deferred_ledger',
+        'rendered_deferred_ledger_card',
       ],
     };
   }
@@ -598,6 +605,8 @@ export async function runPreflight({ root = process.cwd(), phrase = '$pokit' } =
     if (!postRunnerExecutionLock) {
       throw new Error(`post_runner_execution_lock was not recorded for ${activeIssue}`);
     }
+    // POK-354: 실행 승인 후 진행 시작 마커
+    emitProgress('execution_started', activeIssue);
     skillExecutionCheckpoint = await appendSkillExecutionCheckpointReceipt(root, {
       issueId: activeIssue,
       selectedSkill: 'pokit.issue',
@@ -612,6 +621,10 @@ export async function runPreflight({ root = process.cwd(), phrase = '$pokit' } =
 
   let backlogCard = null;
   let renderedBacklogCard = undefined;
+  // POK-343: deferred carry-over ledger auto-surfaces at the backlog/kickoff
+  // chokepoint so re-prioritization starts from machine aggregation, not memory.
+  let deferredLedger = null;
+  let renderedDeferredLedgerCard = undefined;
   if (command.kind === 'backlog_view') {
     try {
       backlogCard = await buildGroupedBacklog(root, {
@@ -622,6 +635,26 @@ export async function runPreflight({ root = process.cwd(), phrase = '$pokit' } =
       // Never break the runner on a backlog view failure.
       backlogCard = null;
       renderedBacklogCard = undefined;
+    }
+    try {
+      deferredLedger = await aggregateDeferredLedger(root);
+      renderedDeferredLedgerCard = renderDeferredLedgerCard(deferredLedger);
+    } catch {
+      // Never break the runner on a ledger failure.
+      deferredLedger = null;
+      renderedDeferredLedgerCard = undefined;
+    }
+  }
+
+  // POK-356: 릴리즈 갭 자동 표면화 — backlog_view(킥오프) 경로에서 표시.
+  let releaseGap = null;
+  let renderedReleaseGapCard = undefined;
+  if (command.kind === 'backlog_view') {
+    try {
+      releaseGap = await checkReleaseGap({ root });
+      renderedReleaseGapCard = renderReleaseGapCard(releaseGap) ?? undefined;
+    } catch {
+      releaseGap = null;
     }
   }
 
@@ -645,6 +678,10 @@ export async function runPreflight({ root = process.cwd(), phrase = '$pokit' } =
     renderedSessionGuidanceCard,
     backlogCard,
     renderedBacklogCard,
+    deferredLedger,
+    renderedDeferredLedgerCard,
+    releaseGap,
+    renderedReleaseGapCard,
     nextAction,
   };
   if (injectedSessionId) {
@@ -1144,8 +1181,48 @@ function formatPreflight(result) {
     renderedSessionGuidanceCard: result.renderedSessionGuidanceCard,
     backlogCard: result.backlogCard,
     renderedBacklogCard: result.renderedBacklogCard,
+    deferredLedger: result.deferredLedger,
+    renderedDeferredLedgerCard: result.renderedDeferredLedgerCard,
     nextAction: result.nextAction,
   }, null, 2);
+}
+
+// POK-353 — loop 한 틱: 멈춤조건 4종 평가 → 걸리면 사람 호출 카드, 아니면 두 자율
+// 이음새(다음후보·retro 표면화) 연속 출력. 큐/집계/게이트분류는 기존 메커니즘에 위임.
+export async function runLoopTickCommand(args = [], { root = process.cwd() } = {}) {
+  const poHalt = args.includes('--po-halt');
+  let gateFailReason = null;
+  for (let index = 0; index < args.length; index += 1) {
+    if (args[index] === '--gate-fail' && args[index + 1] !== undefined) {
+      gateFailReason = args[index + 1];
+      index += 1;
+    }
+  }
+  const currentText = await readFile(path.join(root, '.ai-os/current.md'), 'utf8');
+  const current = parseFrontmatter(currentText);
+  const activeIssue = current.active_issue ?? null;
+
+  const releaseScope = await readReleaseScope(root, current.active_sprint);
+  const candidateCount = releaseScope.candidateCount;
+
+  // 반복 상한 신호: failure_context.attempt(자동 누적)가 현재 active issue 것일 때만.
+  const failure = parseFailureContext(current.failure_context);
+  const reopenAttempt = failure && failure.issue === activeIssue ? failure.attempt : 0;
+
+  // 두 자율 이음새 렌더 (위임 호출).
+  const candidateCard =
+    releaseScope.candidateQueue && releaseScope.candidateQueue.length
+      ? ['╭─ 🔭 다음 후보', '│', ...releaseScope.candidateQueue.map((line) => `│   ${line}`), '╰─'].join('\n')
+      : null;
+  const deferredLedger = await aggregateDeferredLedger(root);
+  const retroCard = renderDeferredLedgerCard(deferredLedger);
+
+  const tick = runLoopTick({
+    stopInputs: { poHalt, gateFailReason, reopenAttempt, candidateCount },
+    candidateCard,
+    retroCard,
+  });
+  return { ...tick, activeIssue, candidateCount, reopenAttempt };
 }
 
 const invokedPath = process.argv[1] ? path.resolve(process.argv[1]) : null;
@@ -1219,6 +1296,11 @@ if (invokedPath === modulePath) {
       console.error(`error: reissue_authored_failed — ${error.message}`);
       process.exitCode = 1;
     }
+  } else if (args[0] === 'loop-tick') {
+    // POK-353 — loop 자율 틱: 멈춤조건 평가 후 체이닝 또는 사람 호출 카드 출력.
+    const result = await runLoopTickCommand(args.slice(1), { root: process.cwd() });
+    console.log(result.card);
+    process.exitCode = 0;
   } else {
     const phrase = args.join(' ') || '$pokit';
     const result = await runPreflight({ root: process.cwd(), phrase });

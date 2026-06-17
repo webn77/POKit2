@@ -2,6 +2,7 @@ import { appendFile, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promis
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { withStateWriteGuard } from './worktree-locks.mjs';
+import { emptySkeletonBody } from './issue-sections.mjs';
 
 const EVENT_LOG_REL = '.ai-os/events/event-log.jsonl';
 const RECEIPT_SCHEMA_VERSION = '0.1.0';
@@ -148,9 +149,12 @@ export async function createIssue({
     '---',
   ].join('\n');
 
+  // POK-349: full required-section skeleton from the single source (empty headers,
+  // no fake fill) when no body is supplied — so a freshly created card carries every
+  // section the doctor will later require, and nothing masquerades as filled.
   const bodySection = body
     ? `\n${body}`
-    : '\n## Brief\n\n_No brief provided._';
+    : emptySkeletonBody(issueType);
 
   const cardContent = `${frontmatter}\n\n# ${id} ${safeTitle}${bodySection}\n`;
 

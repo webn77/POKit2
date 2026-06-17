@@ -107,6 +107,7 @@ if (legacy) {
       '.claude/skills/pokit-*/ (from starter)',
       '.ai-os/ (seed files — no overwrite if exists)',
       '.ai-os/current.md pokit_version field',
+      '.claude/settings.json (safety-floor hooks — points to global engine, user hooks preserved)',
     ];
     console.log(JSON.stringify({
       action: 'install_plan_preview',

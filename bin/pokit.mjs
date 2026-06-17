@@ -3,6 +3,8 @@ import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { resolveHookScriptPath } from '../scripts/lib/hook-floor.mjs';
+
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 const COMMANDS = new Map([
@@ -37,6 +39,7 @@ Local install:
 
 Commands:
 ${[...COMMANDS.entries()].map(([name, command]) => `  ${name.padEnd(16)} ${command.summary}`).join('\n')}
+  ${'hook-floor'.padEnd(16)} Run a thin-project safety-floor hook from the global engine (used by .claude/settings.json).
 
 The core engine installs globally once (npm i -g pokit2 or npx pokit2).
 Each project keeps only its own state — no full engine copy per project.
@@ -61,6 +64,37 @@ async function main(argv = process.argv.slice(2)) {
   if (commandName === 'help') {
     printHelp();
     return 0;
+  }
+
+  // hook-floor — 얇은 프로젝트 안전바닥 훅 디스패치 (POK-347).
+  // 프로젝트 .claude/settings.json의 훅 명령이 `pokit hook-floor <script>`로 들어오면,
+  // 글로벌 본체(repoRoot)의 scripts/hooks/<script>.mjs를 찾아 그대로 실행한다.
+  // stdin(훅 입력 JSON)·stdout·stderr·exit code를 모두 통과시켜 본체 훅과 동일하게 동작한다.
+  if (commandName === 'hook-floor') {
+    const [scriptName] = args;
+    if (!scriptName) {
+      console.error('Usage: pokit hook-floor <hook-script>');
+      return 1;
+    }
+    let hookScriptPath;
+    try {
+      hookScriptPath = resolveHookScriptPath(repoRoot, scriptName);
+    } catch (err) {
+      console.error(err.message);
+      return 1;
+    }
+    const hookChild = spawn(process.execPath, [hookScriptPath], {
+      cwd: process.cwd(),
+      env: process.env,
+      stdio: 'inherit',
+    });
+    return await new Promise((resolve) => {
+      hookChild.on('close', (code) => resolve(code ?? 1));
+      hookChild.on('error', (err) => {
+        console.error(`Failed to run hook-floor ${scriptName}: ${err.message}`);
+        resolve(1);
+      });
+    });
   }
 
   const command = COMMANDS.get(commandName);
