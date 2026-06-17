@@ -377,6 +377,16 @@ export async function resolveIssuePath(issueId, root = process.cwd()) {
   return resolveActiveIssuePath(root, assertIssueId(issueId));
 }
 
+// Frontmatter parsing surfaces bare `active_issue: null` (and `none`/empty/`~`)
+// as truthy strings. Normalize those nullish tokens to real null so bootstrap
+// starters (no active issue) don't crash resolveIssuePath. SSoT for "no active issue".
+const NULLISH_ISSUE_TOKENS = new Set(['null', 'none', '~', '']);
+
+export function normalizeActiveIssue(value) {
+  if (value == null) return null;
+  return NULLISH_ISSUE_TOKENS.has(String(value).trim().toLowerCase()) ? null : value;
+}
+
 // POK-246 (AC1/AC2/AC3/AC6) — the runner (runner_contract_calculator) COMPUTES and
 // PUBLISHES the session guidance card; the skill/main only displays and acts. Returns
 // null when there is no session context and no pending proposals (the normal
@@ -428,10 +438,10 @@ export async function runPreflight({ root = process.cwd(), phrase = '$pokit' } =
   const currentPath = '.ai-os/current.md';
   const currentText = await readFile(path.join(root, currentPath), 'utf8');
   const current = parseFrontmatter(currentText);
-  let activeIssue = current.active_issue ?? null;
+  let activeIssue = normalizeActiveIssue(current.active_issue);
   try {
     const worktreeActive = await readActiveIssueForWorktree(root);
-    activeIssue = worktreeActive.activeIssue ?? activeIssue;
+    activeIssue = normalizeActiveIssue(worktreeActive.activeIssue) ?? activeIssue;
   } catch {
     // Keep tracked current.md fallback.
   }
