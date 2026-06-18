@@ -299,6 +299,8 @@ export async function checkIssueAuthoringEvidence(projectRoot, items) {
   const { dir, files: issueFiles } = await listIssueFiles(projectRoot);
   if (issueFiles.length === 0) return;
 
+  // POK-364: 이벤트로그가 없는 머신(fresh-pull/스타터 번들)에서는 과거 영수증 부재를 미수집으로 처리.
+  const eventLogPresent = await isEventLogPresent(projectRoot);
   const receiptSet = await loadIssueAuthoredReceiptSet(projectRoot);
 
   for (const name of issueFiles) {
@@ -329,6 +331,9 @@ export async function checkIssueAuthoringEvidence(projectRoot, items) {
 
     if (receiptSet.has(receiptKey)) {
       pass(items, 'issue_authoring_evidence', filePath, `${id} has matching issue_authored receipt (hash ${expectedHash}).`);
+    } else if (!eventLogPresent) {
+      // POK-364: 이벤트로그 없는 환경 — 영수증 부재는 미수집(환경성), fail 아님.
+      uncollected(items, 'issue_authoring_evidence', filePath, `${id} 이벤트로그 없는 환경 — issue_authored 영수증 미수집 (fresh-pull/스타터 번들).`);
     } else {
       fail(
         items,
@@ -349,6 +354,13 @@ async function checkAfterGatePassHookConsistency(context, items, {
     ? await commitsProvider()
     : await fetchRecentCommitSubjects(context.root, 20);
   if (!commits || commits.length === 0) return;
+
+  // POK-364: 이벤트로그 없는 환경 — after_gate_pass 영수증 부재는 미수집(환경성).
+  if (!afterGatePassEventsProvider && !(await isEventLogPresent(context.root))) {
+    uncollected(items, 'after_gate_pass_hook_consistency', '.ai-os/events/event-log.jsonl',
+      '이벤트로그 없는 환경 — after_gate_pass 이벤트 미수집 (fresh-pull/스타터 번들).');
+    return;
+  }
 
   const events = afterGatePassEventsProvider
     ? await afterGatePassEventsProvider()
@@ -527,6 +539,9 @@ async function checkWorkflowTrace(projectRoot, items) {
   const { dir, files: issueFiles } = await listIssueFiles(projectRoot);
   if (issueFiles.length === 0) return;
 
+  // POK-364: 이벤트로그 없는 환경 여부 — 영수증 의존 검사를 미수집으로 분기.
+  const eventLogPresent = await isEventLogPresent(projectRoot);
+
   // POK-207/209 — load once; cross-checked against each card's skill-routing claim.
   const executionEnteredIds = await loadIssueExecutionEnteredIds(projectRoot);
   const postRunnerExecutionLockMap = await loadPostRunnerExecutionLockMap(projectRoot);
@@ -559,12 +574,24 @@ async function checkWorkflowTrace(projectRoot, items) {
       pass(items, 'workflow_trace', filePath, 'v0.10+ gate-passed issue has ## Workflow Trace section.');
       // POK-328 — workflow_trace_execution_lock(카드 자기신고 문구) 검사 폐지:
       // post_runner_execution_lock 영수증이 1차 증거이고 checkpoint chain 검사가 이미 강제한다.
-      checkWorkflowTraceSkillInvocationEvidence(text, filePath, frontmatter, items, executionEnteredIds, routingDecisionMap);
-      checkWorkflowTraceSkillCheckpointChain(filePath, frontmatter, items, skillExecutionCheckpointMap, postRunnerExecutionLockMap);
-      checkCheckpointBackfill(filePath, frontmatter, items, {
-        skillExecutionCheckpointMap,
-        ...backfillInputs,
-      });
+      // POK-364: 이벤트로그 없는 환경 — 영수증 의존 검사를 미수집으로 처리.
+      if (!eventLogPresent) {
+        if (requiresPokitIssueSkillInvocationEvidence(filePath, frontmatter)) {
+          uncollected(items, 'workflow_trace_skill_invocation', filePath,
+            `${frontmatter.id ?? filePath} 이벤트로그 없는 환경 — skill_invocation 영수증 미수집 (fresh-pull/스타터 번들).`);
+          uncollected(items, 'workflow_trace_skill_checkpoint_chain', filePath,
+            `${frontmatter.id ?? filePath} 이벤트로그 없는 환경 — checkpoint chain 미수집 (fresh-pull/스타터 번들).`);
+          uncollected(items, 'workflow_trace_checkpoint_backfill', filePath,
+            `${frontmatter.id ?? filePath} 이벤트로그 없는 환경 — checkpoint backfill 검사 미수집 (fresh-pull/스타터 번들).`);
+        }
+      } else {
+        checkWorkflowTraceSkillInvocationEvidence(text, filePath, frontmatter, items, executionEnteredIds, routingDecisionMap);
+        checkWorkflowTraceSkillCheckpointChain(filePath, frontmatter, items, skillExecutionCheckpointMap, postRunnerExecutionLockMap);
+        checkCheckpointBackfill(filePath, frontmatter, items, {
+          skillExecutionCheckpointMap,
+          ...backfillInputs,
+        });
+      }
       checkWorkflowTraceWorkerEvidence(text, filePath, items, { pass, fail });
       await checkWorkflowTraceFanoutMetricsConsistency(projectRoot, text, filePath, frontmatter, items);
       checkWorkflowTracePostChangeReviewEvidence(text, filePath, frontmatter, items, { pass, fail });
@@ -859,6 +886,9 @@ function validatePostRunnerPlanCheckpointPayload(payload = {}) {
 async function checkBacklogAuthoredIssues(projectRoot, items) {
   const { dir, files: issueFiles } = await listIssueFiles(projectRoot);
   if (issueFiles.length === 0) return;
+
+  // POK-364: 이벤트로그 없는 환경 — routing_decision 영수증 부재는 미수집.
+  const eventLogPresent = await isEventLogPresent(projectRoot);
   const routingDecisionMap = await loadRoutingDecisionMap(projectRoot);
 
   for (const name of issueFiles) {
@@ -870,7 +900,14 @@ async function checkBacklogAuthoredIssues(projectRoot, items) {
     if (!isBacklogAuthoredIssue(frontmatter)) continue;
 
     checkBacklogIssueContract(frontmatter, filePath, items);
-    checkBacklogRoutingDecisionEvidence(frontmatter, filePath, items, routingDecisionMap);
+    if (!eventLogPresent) {
+      // POK-364: 이벤트로그 없는 환경 — routing_decision 검사 미수집으로 처리.
+      const id = frontmatter.id ?? filePath.match(/POK-\d{3}/)?.[0] ?? filePath;
+      uncollected(items, 'backlog_routing_decision', filePath,
+        `${id} 이벤트로그 없는 환경 — routing_decision 영수증 미수집 (fresh-pull/스타터 번들).`);
+    } else {
+      checkBacklogRoutingDecisionEvidence(frontmatter, filePath, items, routingDecisionMap);
+    }
     checkWorkerTaskTerminology(text, filePath, items);
     checkWorkerTaskWorkflowTrace(text, filePath, items);
   }
@@ -2501,10 +2538,10 @@ async function checkPokitVersionDriftDoctor(context, items) {
 function summarize(items) {
   return items.reduce(
     (summary, item) => {
-      summary[item.status] += 1;
+      summary[item.status] = (summary[item.status] ?? 0) + 1;
       return summary;
     },
-    { pass: 0, fail: 0, warning: 0 }
+    { pass: 0, fail: 0, warning: 0, uncollected: 0 }
   );
 }
 
@@ -2518,6 +2555,21 @@ function fail(items, check, filePath, message, nextAction) {
 
 function warning(items, check, filePath, message, nextAction) {
   items.push({ status: 'warning', check, path: filePath, message, next_action: nextAction ?? resolveDoctorGuidance({ check, message }) });
+}
+
+// POK-364: 이벤트로그 없는 환경(fresh-pull/스타터 번들)에서 영수증 부재를 fail 대신 미수집으로 표시.
+function uncollected(items, check, filePath, message) {
+  items.push({ status: 'uncollected', check, path: filePath, message });
+}
+
+// POK-364: 이벤트로그 파일이 이 머신에 존재하는지 확인. 없으면 fresh-checkout 환경.
+async function isEventLogPresent(projectRoot) {
+  try {
+    await access(path.join(projectRoot, '.ai-os/events/event-log.jsonl'));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 // POK-134 Rule Section Compaction — `## Rule` 본문 POK gate 로그 줄 수 임계 가드.
@@ -3286,6 +3338,7 @@ function formatResult(result) {
     `pass: ${result.summary.pass}`,
     `fail: ${result.summary.fail}`,
     `warning: ${result.summary.warning}`,
+    `uncollected: ${result.summary.uncollected ?? 0}`,
     '',
   ];
 

@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="starter/assets/pokit2-logo.jpg" alt="POKit2" width="220">
+</p>
+
 # POKit2
 
 POKit2 is a local-first AI work harness for PO-led product work and PO-led AI product work.

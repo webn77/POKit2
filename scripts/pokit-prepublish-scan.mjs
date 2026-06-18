@@ -41,6 +41,7 @@ export const LEAK_PATTERNS = [
  */
 const SCAN_EXCLUDES = new Set([
   'scripts/pokit-prepublish-scan.mjs',
+  'scripts/pokit-public-sync.mjs',
   'tests/prepublish-scan.test.mjs',
 ]);
 

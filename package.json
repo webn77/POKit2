@@ -1,13 +1,23 @@
 {
   "name": "pokit2",
-  "version": "0.21.1",
+  "version": "0.22.0",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/webn77/POKit2.git"
+  },
+  "homepage": "https://github.com/webn77/POKit2#readme",
+  "bugs": {
+    "url": "https://github.com/webn77/POKit2/issues"
+  },
   "files": [
     "bin/",
     "scripts/",
     ".ai-os/standards/",
     ".ai-os/templates/",
     "starter/AGENTS.md",
+    "starter/README.md",
+    "starter/assets/",
     "starter/.claude/",
     "starter/.ai-os/current.md",
     "starter/.ai-os/status-board.md",

@@ -11,7 +11,7 @@
 | # | 산출물 | 완료 판정 기준 |
 |---|--------|----------------|
 | 1 | **npm publish** | `npm view pokit2 version` 실측이 해당 버전과 일치하고, `prepublishOnly` 누출 스캔을 통과한 패키지가 올라가 있다. |
-| 2 | **공개 레포 소스** | 공개 레포(github.com/dongwonlee222/pokit2) 기본 브랜치 HEAD가 해당 버전 산출물로 갱신돼 있다 (커밋 SHA 기록). |
+| 2 | **공개 레포 소스** | 공개 레포(github.com/webn77/POKit2) 기본 브랜치 HEAD가 해당 버전 산출물로 갱신돼 있다 (커밋 SHA 기록). POK-372: 캐노니컬을 회사계정 dongwonlee222/pokit2에서 개인계정 webn77/POKit2로 이전. |
 | 3 | **git 태그** | `vX.Y.Z` 태그가 원격에 존재한다 (`git ls-remote --tags`로 실측). |
 | 4 | **공개 레포 GitHub Release** | 공개 레포에 `vX.Y.Z` GitHub Release가 생성돼 있다 (`gh release view vX.Y.Z` 실측). 외부 공개이므로 생성은 PO 승인 경계. |
 
@@ -34,10 +34,13 @@
 
 검사 절차:
 1. 빈 임시 폴더에서 `npx pokit2 install`(또는 해당 릴리즈 설치 경로)로 fresh 설치한다.
-2. 첫 명령 실행: 설치 직후 첫 사용자 명령(예: 시작 트리거)이 동작한다.
-3. `doctor` 실행: fresh 설치 상태에서 `pokit doctor` exit 0.
+2. **부트스트랩 startup 비크래시** (POK-363 의무화, v0.22+): 빈손 신규 설치 상태(`active_issue: null`, `canonical_state: bootstrap`)에서 시작 트리거('포킷 시작')가 비크래시 + exit 0이어야 한다. `node scripts/pokit-release-g2-check.mjs`로 자동 실측. 실패 시 G2 불통과.
+3. 첫 명령 실행: 설치 직후 첫 사용자 명령(예: 시작 트리거)이 동작한다.
+4. `doctor` 실행: fresh 설치 상태에서 `pokit doctor` exit 0.
 
-통과 기준: 위 3단계가 모두 성공(설치 성공 + 첫 명령 동작 + doctor fail 0). 하나라도 실패하면 릴리즈 게이트 불통과. 게이트 **전**에 측정한다 (게이트 후 다음 이슈에서 발견하는 것은 늦은 실측 — 0.18.0의 실패 패턴).
+통과 기준: 위 4단계가 모두 성공(설치 성공 + 부트스트랩 startup 비크래시 + 첫 명령 동작 + doctor fail 0). 하나라도 실패하면 릴리즈 게이트 불통과. 게이트 **전**에 측정한다 (게이트 후 다음 이슈에서 발견하는 것은 늦은 실측 — 0.18.0·0.21.0의 실패 패턴).
+
+> **부트스트랩 케이스란**: 사용자가 `npx pokit2 install` 후 아무 이슈도 없는 상태에서 "포킷 시작"을 처음 치는 경로다. `active_issue: null` 토큰이 문자열 "null"로 파싱돼 `isIssueId` 검증에 걸려 크래시하는 결함이 v0.19~v0.21 6 sprint를 통과했다(POK-362). G2가 이 경로를 1급 케이스로 실측함으로써 시스템 차단한다.
 
 ## github-publish-hook 결론 (3회 이월 종결)
 

@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 import { readFile, stat } from 'node:fs/promises';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -431,6 +433,24 @@ export async function resolveSessionGuidanceCard({
   return null;
 }
 
+const execAsync = promisify(execFile);
+
+/**
+ * POK-368: startup 트리거 시 git fetch + pull --ff-only 선행 실행.
+ * 성공 시 변경 있으면 배너 반환, 없으면 null.
+ * 실패 시 에러 메시지 반환 (카드 렌더링 blocking 안 함).
+ */
+export async function syncGitIfStartup(root) {
+  try {
+    await execAsync('git', ['fetch', 'origin'], { cwd: root });
+    const { stdout } = await execAsync('git', ['pull', '--ff-only'], { cwd: root });
+    const changed = stdout && !stdout.includes('Already up to date');
+    return changed ? `[git sync] 최신 상태 반영됨: ${stdout.trim().split('\n')[0]}` : null;
+  } catch (e) {
+    return `[git sync] 동기화 실패 (로컬 상태로 계속): ${e.message.split('\n')[0]}`;
+  }
+}
+
 // POK-056 startup budget: lightweight state recovery only — no doctor scan, no full test, no gate evidence.
 export async function runPreflight({ root = process.cwd(), phrase = '$pokit' } = {}) {
   const previousSessionId = process.env.POKIT_SESSION_ID;
@@ -454,6 +474,13 @@ export async function runPreflight({ root = process.cwd(), phrase = '$pokit' } =
   const nextAction = current.next_action ?? issue.next_action ?? null;
   const command = classifyPokitCommand(phrase);
   const runnerAssignment = resolveRunnerAssignment(issue);
+
+  // POK-368: startup 트리거 시 git 동기화 선행 (non-startup 명령은 skip)
+  let gitSyncBanner = null;
+  if (command.kind === 'startup_trigger') {
+    gitSyncBanner = await syncGitIfStartup(root);
+  }
+
   let hasGitMetadata = false;
   try {
     await stat(path.join(root, '.git'));
@@ -507,7 +534,10 @@ export async function runPreflight({ root = process.cwd(), phrase = '$pokit' } =
     contextBudget,
     failureContext: parseFailureContext(current.failure_context),
   });
-  const renderedLifecycleCard = renderStartupLifecycleCard({ lifecycleCard });
+  const renderedLifecycleCard = [
+    gitSyncBanner,
+    renderStartupLifecycleCard({ lifecycleCard }),
+  ].filter(Boolean).join('\n');
   const preExecutionPreviewCard = command.kind === 'execution_request' && allowsPreExecutionPreview({
     gateState: current.gate_state ?? issue.gate_state ?? null,
     issueStatus: issue.status ?? current.status ?? null,
@@ -693,6 +723,7 @@ export async function runPreflight({ root = process.cwd(), phrase = '$pokit' } =
     releaseGap,
     renderedReleaseGapCard,
     nextAction,
+    gitSyncBanner,
   };
   if (injectedSessionId) {
     delete process.env.POKIT_SESSION_ID;

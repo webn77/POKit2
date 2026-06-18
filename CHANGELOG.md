@@ -2,6 +2,19 @@
 
 This public changelog tracks the published `pokit2` package and its public source surfaces. Internal development issues, sprint memory, receipts, and work history are intentionally excluded.
 
+## [0.22.0] - 2026-06-18
+
+### Added
+
+- Release gate G2 now mandates a bootstrap first-run non-crash check: a fresh empty install (`active_issue: null`) must run the startup trigger with exit 0. Enforced by `scripts/pokit-release-g2-check.mjs`.
+- Release deployment helpers: `scripts/pokit-public-sync.mjs` (public-repo refined sync — clone, compute file set, replace, leak-scan, diff; `--apply` commits, push stays a human gate) and `scripts/lib/release-artifacts-check.mjs` (measures the 4 release artifacts: npm, public source, tag, GitHub Release).
+- Starter branding: POKit2 logo bundled in the starter and surfaced in the README.
+
+### Changed
+
+- doctor distinguishes "never collected" from "regressed" for local-only event-log receipt checks, so a fresh pull / bundle no longer reports missing past receipts as failures while real regressions still fail.
+- Startup / current-state triggers now git-sync first, so multi-session state is reconciled before the status card renders.
+
 ## [0.19.0] - 2026-06-12
 
 ### Added
