@@ -537,7 +537,7 @@ export async function runPreflight({ root = process.cwd(), phrase = '$pokit' } =
   const renderedLifecycleCard = [
     gitSyncBanner,
     renderStartupLifecycleCard({ lifecycleCard }),
-  ].filter(Boolean).join('\n');
+  ].filter(Boolean).join('\n\n');
   const preExecutionPreviewCard = command.kind === 'execution_request' && allowsPreExecutionPreview({
     gateState: current.gate_state ?? issue.gate_state ?? null,
     issueStatus: issue.status ?? current.status ?? null,

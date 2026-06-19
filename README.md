@@ -477,7 +477,7 @@ POKit2 currently does not provide:
 To work from source, clone the repository and link the package locally:
 
 ```bash
-git clone https://github.com/dongwonlee222/POKit2.git
+git clone https://github.com/webn77/POKit2.git
 cd POKit2
 npm link
 pokit doctor
