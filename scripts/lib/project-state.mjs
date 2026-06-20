@@ -316,18 +316,32 @@ export async function allocateIssueId(root, targetProjectKey, { homeDir } = {}) 
   return { issueId, project, nextNumber };
 }
 
-export async function resolveRegisteredProjectByPath(homeDir, cwd) {
+// POK-383 — 등록된 프로젝트 목록(레지스트리 인덱스). 러너 카드의 "등록 N개 중" 표시에 사용.
+// 레지스트리 부재/비어있으면 빈 배열을 반환(throw 금지) — 단일 프로젝트 환경 non-breaking.
+export async function listRegisteredProjects(homeDir = defaultPokitHome()) {
   let entries;
   try {
     entries = await readdir(registryDir(homeDir), { withFileTypes: true });
   } catch {
-    return null;
+    return [];
   }
-  const resolvedCwd = path.resolve(cwd);
-  const candidates = [];
+  const projects = [];
   for (const entry of entries) {
     if (!entry.isFile() || !entry.name.endsWith('.json')) continue;
     const project = await readJson(path.join(registryDir(homeDir), entry.name), null);
+    if (!project?.key && !project?.path) continue;
+    projects.push(project);
+  }
+  projects.sort((left, right) => String(left.key ?? '').localeCompare(String(right.key ?? '')));
+  return projects;
+}
+
+// POK-383 — cwd가 속한 등록 프로젝트를 이미 읽어둔 목록에서 고른다(I/O 없는 순수 매칭).
+// 가장 긴 경로 접두사 우선. registryDir 재스캔을 피하려고 resolveRegistryContext와 공유한다.
+export function matchRegisteredProjectByPath(projects, cwd) {
+  const resolvedCwd = path.resolve(cwd);
+  const candidates = [];
+  for (const project of projects ?? []) {
     if (!project?.path) continue;
     const projectPath = path.resolve(project.path);
     if (resolvedCwd === projectPath || resolvedCwd.startsWith(`${projectPath}${path.sep}`)) {
@@ -336,6 +350,11 @@ export async function resolveRegisteredProjectByPath(homeDir, cwd) {
   }
   candidates.sort((left, right) => String(right.path).length - String(left.path).length);
   return candidates[0] ?? null;
+}
+
+export async function resolveRegisteredProjectByPath(homeDir, cwd) {
+  const projects = await listRegisteredProjects(homeDir);
+  return matchRegisteredProjectByPath(projects, cwd);
 }
 
 export async function hasProjectState(root) {

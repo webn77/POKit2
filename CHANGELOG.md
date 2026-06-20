@@ -2,6 +2,20 @@
 
 This public changelog tracks the published `pokit2` package and its public source surfaces. Internal development issues, sprint memory, receipts, and work history are intentionally excluded.
 
+## [0.24.0] - 2026-06-21
+
+### Added
+
+- Release-artifact gate at sprint close: `pokit-sprint-close` now enforces the 4 release artifacts (npm publish / public source / git tag / GitHub Release) as a mandatory checklist, preventing silent release omissions.
+- Event-log team sharing: sprint close copies and commits `logs/` to the work repo, so multi-PC event-log data is no longer stranded local-only.
+- Project-aware runner: the runner now reads the `~/.pokit` project registry and surfaces the active project with its registered-project count (e.g. "프로젝트 pokit (등록 2개 중)") plus structured `activeProject` / `registryProjectCount` fields. The project's `.ai-os` stays the source of truth; the registry is a read-only index, and single-project / no-registry environments render unchanged.
+
+### Changed
+
+- Metrics collection (token / duration) is now wired exclusively through the gate collector, unifying instrumentation onto a single path.
+- The test layer now distinguishes "never collected" from "regressed" for event-log-dependent tests, so a fresh pull no longer fails on absent local-only receipts while real regressions still fail.
+- Gate approval flow streamlined to remove double-confirmation friction while preserving the human approval boundary.
+
 ## [0.22.0] - 2026-06-18
 
 ### Added

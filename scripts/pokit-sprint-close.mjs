@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { appendFile, mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises';
+import { appendFile, copyFile, mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { rotateRuleSection } from './lib/rule-section.mjs';
@@ -8,6 +8,7 @@ import { withStateWriteGuard } from './lib/worktree-locks.mjs';
 import { collectSprintFeedbackModel, renderSprintFeedbackCard } from './lib/feedback-card.mjs';
 import { parseFrontmatter } from './lib/issue-frontmatter.mjs';
 import { checkReleaseGap, renderReleaseGapCard } from './lib/release-gap.mjs';
+import { checkReleaseArtifacts, renderArtifactsTable } from './lib/release-artifacts-check.mjs';
 
 const VERSION_PATTERN = /^v\d+\.\d+\.\d+$/;
 
@@ -112,7 +113,7 @@ function extractNextAction(handoffText) {
   return match?.[1]?.trim();
 }
 
-export async function closeSprint({ root = process.cwd(), sprintVersion } = {}) {
+export async function closeSprint({ root = process.cwd(), sprintVersion, skipNpm = false } = {}) {
   const currentPath = path.join(root, '.ai-os/current.md');
   const handoffPath = path.join(root, '.ai-os/memory/session/handoff.md');
 
@@ -181,6 +182,53 @@ export async function closeSprint({ root = process.cwd(), sprintVersion } = {}) 
     releaseGap = null;
   }
 
+  // POK-378 — 릴리즈 산출물 4종 게이트: 마감 전 4종 완료 여부 실측.
+  // npm publish 해당 없는 스프린트는 --skip-npm으로 명시 skip.
+  // 미완료 항목이 있으면 경고 카드 출력 (fail-by-default 경고, 마감 절차는 계속).
+  let releaseArtifacts = null;
+  let releaseArtifactsCard = null;
+  let releaseArtifactsMissing = false;
+  try {
+    const pkgText = await readFile(path.join(root, 'package.json'), 'utf8');
+    const pkgVersion = JSON.parse(pkgText).version;
+    releaseArtifacts = await checkReleaseArtifacts(pkgVersion);
+    if (skipNpm) {
+      releaseArtifacts = releaseArtifacts.map(a =>
+        a.id === 1 ? { ...a, status: 'published', detail: `skip-npm 선언 — 해당 없는 스프린트` } : a
+      );
+    }
+    const missing = releaseArtifacts.filter(a => a.status !== 'published');
+    releaseArtifactsMissing = missing.length > 0;
+    if (releaseArtifactsMissing) {
+      releaseArtifactsCard = [
+        '╭─ ⚠️  릴리즈 산출물 미완료 (POK-378 게이트)',
+        '│',
+        renderArtifactsTable(releaseArtifacts).split('\n').map(l => `│  ${l}`).join('\n'),
+        '│',
+        '│  npm publish 해당 없는 스프린트: --skip-npm 플래그 사용',
+        '╰─',
+      ].join('\n');
+    }
+  } catch {
+    releaseArtifacts = null;
+  }
+
+  // POK-369 — event-log git 공유: sprint-close 시 event-log.jsonl을 logs/ 폴더에 복사.
+  // event-log.jsonl이 없는 환경(fresh-pull)에서는 조용히 건너뜀.
+  let eventLogCopyPath = null;
+  try {
+    const srcEventLog = path.join(root, '.ai-os/events/event-log.jsonl');
+    const logsDir = path.join(root, 'logs');
+    await stat(srcEventLog); // 파일 존재 확인 — 없으면 catch로 이동
+    await mkdir(logsDir, { recursive: true });
+    const destName = `event-log-${version}.jsonl`;
+    const destPath = path.join(logsDir, destName);
+    await copyFile(srcEventLog, destPath);
+    eventLogCopyPath = `logs/${destName}`;
+  } catch {
+    // event-log 없는 환경(fresh-pull/스타터 번들) — 건너뜀
+  }
+
   return {
     archivePath,
     handoffPath: '.ai-os/memory/session/handoff.md',
@@ -190,6 +238,10 @@ export async function closeSprint({ root = process.cwd(), sprintVersion } = {}) 
     feedbackCard,
     releaseGap,
     releaseGapCard,
+    releaseArtifacts,
+    releaseArtifactsCard,
+    releaseArtifactsMissing,
+    eventLogCopyPath,
   };
 }
 
@@ -255,13 +307,24 @@ async function checkRetroPresence(root, sprintVersion) {
 }
 
 async function main() {
-  const sprintVersion = process.argv[2];
-  const result = await closeSprint({ sprintVersion });
+  const args = process.argv.slice(2);
+  const skipNpm = args.includes('--skip-npm');
+  const sprintVersion = args.find(a => !a.startsWith('--'));
+  const result = await closeSprint({ sprintVersion, skipNpm });
   // stdout은 순수 JSON 계약 유지 (기존 CLI 소비자/테스트) — 사람용 카드는 stderr로.
   if (result.feedbackCard) {
     process.stderr.write(`${result.feedbackCard}\n\n`);
   }
+  if (result.releaseArtifactsCard) {
+    process.stderr.write(`${result.releaseArtifactsCard}\n\n`);
+  }
+  if (result.eventLogCopyPath) {
+    process.stderr.write(`✔ event-log → ${result.eventLogCopyPath} (POK-369: git add 후 커밋하면 팀 공유됩니다)\n\n`);
+  }
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+  if (result.releaseArtifactsMissing) {
+    process.exitCode = 1;
+  }
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {

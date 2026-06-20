@@ -74,6 +74,10 @@ import {
 } from './lib/session-guidance-cards.mjs';
 import { measureStartup } from './pokit-measure-startup.mjs';
 import { parseFrontmatter } from './lib/issue-frontmatter.mjs';
+// POK-383 — 멀티프로젝트 현황판 0단계 (a): 러너가 ~/.pokit 레지스트리를 인지한다.
+// .ai-os가 진실(active project name·상태), 레지스트리는 인덱스(등록 프로젝트 수·cwd 매핑)일 뿐.
+import { defaultPokitHome } from './lib/pokit-config.mjs';
+import { listRegisteredProjects, resolveRegisteredProjectByPath } from './lib/project-state.mjs';
 
 const POKIT_PHRASES = [
   '$pokit',
@@ -225,32 +229,51 @@ export function classifyPokitCommand(phrase) {
   const lower = raw.toLocaleLowerCase('ko-KR');
   const normalizedApproval = lower.replace(/\s+/g, '');
 
-  if (matchesExecutionRequestPhrase(raw)) {
-    return {
-      kind: 'execution_request',
-      command: raw,
-      raw,
-      mutates_state: false,
-      requires_human_approval: true,
-      output_fields: [
-        'command',
-        'active_issue',
-        'issue_path',
-        'pre_execution_preview_card',
-        'approval_required',
-      ],
-    };
+  const targetMatch = raw.match(new RegExp(`^(${ISSUE_ID_SOURCE})\\s+(.+)$`, 'i'));
+  let checkRaw = raw;
+  let targetIssue = undefined;
+  if (targetMatch) {
+    targetIssue = assertIssueId(targetMatch[1]);
+    checkRaw = targetMatch[2].trim();
   }
 
-  // A leading issue id only NAMES the execution target; the execution synonym
-  // must still be recognized in the remainder (e.g. "POK-233 진행하자").
-  const targetMatch = raw.match(new RegExp(`^(${ISSUE_ID_SOURCE})\\s+(.+)$`, 'i'));
-  if (targetMatch && matchesExecutionRequestPhrase(targetMatch[2])) {
+  const parts = checkRaw.split(/\s+/);
+  if (parts.length >= 2) {
+    const lastPart = parts[parts.length - 1].toLowerCase();
+    const option = EXECUTION_MODE_SELECTIONS[lastPart];
+    if (option) {
+      const phrasePart = parts.slice(0, -1).join(' ');
+      if (matchesExecutionRequestPhrase(phrasePart)) {
+        return {
+          kind: 'execution_request_combined',
+          command: raw,
+          raw,
+          target_issue: targetIssue,
+          selected_option: lastPart,
+          mode: option.mode,
+          worker_authorization: option.worker_authorization,
+          mutates_state: false,
+          requires_human_approval: true,
+          output_fields: [
+            'command',
+            'active_issue',
+            'issue_path',
+            'pre_execution_preview_card',
+            'execution_reasoning_checklist',
+            'post_runner_execution_lock',
+            'approval_required',
+          ],
+        };
+      }
+    }
+  }
+
+  if (matchesExecutionRequestPhrase(checkRaw)) {
     return {
       kind: 'execution_request',
       command: raw,
       raw,
-      target_issue: assertIssueId(targetMatch[1]),
+      target_issue: targetIssue,
       mutates_state: false,
       requires_human_approval: true,
       output_fields: [
@@ -521,10 +544,13 @@ export async function runPreflight({ root = process.cwd(), phrase = '$pokit' } =
     gateState: current.gate_state ?? issue.gate_state ?? null,
     issueStatus: issue.status ?? current.status ?? null,
   });
+  // POK-383 — 레지스트리 인덱스 컨텍스트(.ai-os 진실은 불변, 등록 수만 인지).
+  const registryContext = await resolveRegistryContext(root);
   const lifecycleCard = buildStartupLifecycleCardFields({
     activeIssue,
     status,
     project: current.active_project ?? issue.project ?? null,
+    registryProjectCount: registryContext.registeredProjectCount,
     sprint: current.active_sprint ?? null,
     gateState: current.gate_state ?? issue.gate_state ?? null,
     issueStatus: issue.status ?? current.status ?? null,
@@ -537,8 +563,8 @@ export async function runPreflight({ root = process.cwd(), phrase = '$pokit' } =
   const renderedLifecycleCard = [
     gitSyncBanner,
     renderStartupLifecycleCard({ lifecycleCard }),
-  ].filter(Boolean).join('\n\n');
-  const preExecutionPreviewCard = command.kind === 'execution_request' && allowsPreExecutionPreview({
+  ].filter(Boolean).join('\n');
+  const preExecutionPreviewCard = (command.kind === 'execution_request' || command.kind === 'execution_request_combined') && allowsPreExecutionPreview({
     gateState: current.gate_state ?? issue.gate_state ?? null,
     issueStatus: issue.status ?? current.status ?? null,
   })
@@ -566,7 +592,7 @@ export async function runPreflight({ root = process.cwd(), phrase = '$pokit' } =
   // POK-198 — AC1: capture real wall-clock start at execution-approval (chokepoint).
   // Guard: only on execution_request AND when there is a valid active issue.
   // Try/catch so a marker write failure never breaks the preview card output.
-  if (command.kind === 'execution_request' && executionAllowed && isIssueId(activeIssue)) {
+  if ((command.kind === 'execution_request' || command.kind === 'execution_request_combined') && executionAllowed && isIssueId(activeIssue)) {
     try {
       await recordIssueStartMarker({
         root,
@@ -606,7 +632,7 @@ export async function runPreflight({ root = process.cwd(), phrase = '$pokit' } =
   }
 
   if (
-    command.kind === 'execution_mode_selection' &&
+    (command.kind === 'execution_mode_selection' || command.kind === 'execution_request_combined') &&
     command.mode !== 'stop' &&
     executionAllowed &&
     isIssueId(activeIssue)
@@ -704,6 +730,10 @@ export async function runPreflight({ root = process.cwd(), phrase = '$pokit' } =
     command,
     activeIssue,
     issuePath,
+    // POK-383 — active project는 .ai-os가 진실, 레지스트리는 인덱스(등록 수·cwd 매핑).
+    activeProject: current.active_project ?? issue.project ?? null,
+    registryProjectCount: registryContext.registeredProjectCount,
+    registryActiveKey: registryContext.registeredActiveKey,
     runnerAssignment,
     verificationIntensity,
     lifecycleCard,
@@ -751,10 +781,32 @@ export function resolveRunnerAssignment(issueFrontmatter = {}) {
   };
 }
 
+// POK-383 — 러너 프로젝트 인식 배선.
+// ~/.pokit 레지스트리를 인덱스로만 읽는다: 등록 프로젝트 수 + cwd가 어느 등록 프로젝트인지.
+// .ai-os의 active project name·상태는 진실로 그대로 두고 덮어쓰지 않는다.
+// 레지스트리 부재/단일 프로젝트면 registeredProjectCount<=1 → 카드 출력은 기존과 동일(non-breaking).
+async function resolveRegistryContext(root, { homeDir = defaultPokitHome() } = {}) {
+  try {
+    const [registered, matched] = await Promise.all([
+      listRegisteredProjects(homeDir),
+      resolveRegisteredProjectByPath(homeDir, root),
+    ]);
+    return {
+      registeredProjectCount: registered.length,
+      registeredActiveKey: matched?.key ?? null,
+      cwdMatchesRegistry: Boolean(matched),
+    };
+  } catch {
+    // 레지스트리 읽기 실패는 절대 러너를 깨지 않는다 (additive 인덱스 표면).
+    return { registeredProjectCount: 0, registeredActiveKey: null, cwdMatchesRegistry: false };
+  }
+}
+
 export function buildStartupLifecycleCardFields({
   activeIssue = null,
   status = null,
   project = null,
+  registryProjectCount = null,
   sprint = null,
   gateState = null,
   issueStatus = null,
@@ -786,7 +838,7 @@ export function buildStartupLifecycleCardFields({
     fields: {
       access: ['timestamp', 'mode'],
       current: {
-        project,
+        project: formatProjectLine(project, registryProjectCount),
         sprint: plainifyUserText(formatSprintLine(sprint, candidateCount)),
         issue: activeIssue,
         state: plainifyUserText(formatStartupState(gateState ?? status, issueStatus)),
@@ -894,7 +946,7 @@ function buildExecutionReasoningChecklist({
   issueStatus = null,
   issue = {},
 } = {}) {
-  if (command?.kind !== 'execution_mode_selection' || command.mode === 'stop') return undefined;
+  if ((command?.kind !== 'execution_mode_selection' && command?.kind !== 'execution_request_combined') || command.mode === 'stop') return undefined;
 
   const workerTasksNeed = issue.worker_tasks ?? (Number(issue.produces?.length ?? 0) >= 3 ? 'recommended' : 'evaluate-before-dispatch');
   const fallbackReason = command.worker_authorization === 'authorized'
@@ -996,6 +1048,16 @@ function formatSprintLine(sprint, candidateCount) {
   if (!sprint) return null;
   if (Number.isInteger(candidateCount)) return `${sprint} (mid-sprint, candidates 잔여 ${candidateCount})`;
   return sprint;
+}
+
+// POK-383 — 프로젝트명(.ai-os 진실)에 레지스트리 인덱스 수만 덧붙인다.
+// 등록 프로젝트가 2개 이상일 때만 "(등록 N개 중)" 표시; 단일/부재면 프로젝트명 그대로(non-breaking).
+function formatProjectLine(project, registryProjectCount) {
+  if (!project) return project;
+  if (Number.isInteger(registryProjectCount) && registryProjectCount > 1) {
+    return `${project} (등록 ${registryProjectCount}개 중)`;
+  }
+  return project;
 }
 
 function formatRecentDecision(activeIssue, candidateQueue = []) {
@@ -1209,6 +1271,9 @@ function formatPreflight(result) {
     command: result.command,
     activeIssue: result.activeIssue,
     issuePath: result.issuePath,
+    activeProject: result.activeProject,
+    registryProjectCount: result.registryProjectCount,
+    registryActiveKey: result.registryActiveKey,
     runnerAssignment: result.runnerAssignment,
     verification_intensity: result.verificationIntensity,
     lifecycleCard: result.lifecycleCard,

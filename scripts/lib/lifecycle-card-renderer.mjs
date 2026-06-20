@@ -1,5 +1,26 @@
 const RIGHT_SIDE_BORDERS = /[┐┤┘]/g;
 
+function getVisualWidth(str) {
+  let width = 0;
+  for (let i = 0; i < str.length; i++) {
+    const code = str.charCodeAt(i);
+    if ((code >= 0x1100 && code <= 0x11ff) || 
+        (code >= 0x3130 && code <= 0x318f) || 
+        (code >= 0xac00 && code <= 0xd7af)) {
+      width += 2;
+    } else {
+      width += 1;
+    }
+  }
+  return width;
+}
+
+function padLabel(label, targetWidth = 10) {
+  const visualWidth = getVisualWidth(label);
+  const paddingNeeded = Math.max(0, targetWidth - visualWidth);
+  return label + ' '.repeat(paddingNeeded);
+}
+
 export function renderStartupLifecycleCard({ lifecycleCard = {}, now = new Date() } = {}) {
   const current = lifecycleCard.fields?.current ?? {};
   const context = lifecycleCard.fields?.context ?? {};
@@ -11,16 +32,16 @@ export function renderStartupLifecycleCard({ lifecycleCard = {}, now = new Date(
     '╭─ 🚀 POKit2 세션 시작',
     '│',
     '│ 접속',
-    `│   일시    ${formatKst(now)}`,
-    `│   모드    ${valueOrFallback(lifecycleCard.mode, '상태 확인')}`,
+    `│   ${padLabel('일시', 8)}${formatKst(now)}`,
+    `│   ${padLabel('모드', 8)}${valueOrFallback(lifecycleCard.mode, '상태 확인')}`,
     '│',
     '│ 현재 진행',
-    `│   프로젝트  ${valueOrFallback(current.project)}`,
-    `│   스프린트  ${valueOrFallback(current.sprint)}`,
-    `│   이슈      ${valueOrFallback(current.issue)}`,
-    `│   상태      ${valueOrFallback(current.state)}`,
-    `│   최근 결정 ${valueOrFallback(current.recent_decision)}`,
-    `│   다음      ${valueOrFallback(current.next)}`,
+    `│   ${padLabel('프로젝트', 10)}${valueOrFallback(current.project)}`,
+    `│   ${padLabel('스프린트', 10)}${valueOrFallback(current.sprint)}`,
+    `│   ${padLabel('이슈', 10)}${valueOrFallback(current.issue)}`,
+    `│   ${padLabel('상태', 10)}${valueOrFallback(current.state)}`,
+    `│   ${padLabel('최근 결정', 10)}${valueOrFallback(current.recent_decision)}`,
+    `│   ${padLabel('다음', 10)}${valueOrFallback(current.next)}`,
   ];
 
   appendSourceSection(lines, source);
@@ -32,9 +53,9 @@ export function renderStartupLifecycleCard({ lifecycleCard = {}, now = new Date(
     lines.push(
       '│',
       '│ 지난 작업 멈춘 곳',
-      `│   단계      ${valueOrFallback(failureNotice.stage)}`,
-      `│   원인      ${valueOrFallback(failureNotice.reason)}`,
-      `│   시도      ${valueOrFallback(failureNotice.attempt_line)}`,
+      `│   ${padLabel('단계', 10)}${valueOrFallback(failureNotice.stage)}`,
+      `│   ${padLabel('원인', 10)}${valueOrFallback(failureNotice.reason)}`,
+      `│   ${padLabel('시도', 10)}${valueOrFallback(failureNotice.attempt_line)}`,
     );
   }
 
@@ -66,14 +87,14 @@ export function renderPreExecutionPreviewCard({ previewCard = {} } = {}) {
     '╭─ ⚠️ POKit2 실행 전 확인',
     '│',
     '│ 이슈',
-    `│   번호      ${valueOrFallback(current.issue)}`,
-    `│   제목      ${valueOrFallback(current.title)}`,
+    `│   ${padLabel('번호', 12)}${valueOrFallback(current.issue)}`,
+    `│   ${padLabel('제목', 12)}${valueOrFallback(current.title)}`,
     '│',
     '│ 미리보기',
-    `│   목적      ${valueOrFallback(preview.purpose)}`,
-    `│   사용자 개선 ${valueOrFallback(preview.user_improvement)}`,
-    `│   이전 문제 ${valueOrFallback(preview.before)}`,
-    `│   이후 해결 ${valueOrFallback(preview.after)}`,
+    `│   ${padLabel('목적', 12)}${valueOrFallback(preview.purpose)}`,
+    `│   ${padLabel('사용자 개선', 12)}${valueOrFallback(preview.user_improvement)}`,
+    `│   ${padLabel('이전 문제', 12)}${valueOrFallback(preview.before)}`,
+    `│   ${padLabel('이후 해결', 12)}${valueOrFallback(preview.after)}`,
     '│',
     '├─ 선택',
     `│   ${valueOrFallback(inputWaiting.message, 'a) 수동  b) 자동  c) 중단')}`,
@@ -89,16 +110,16 @@ export function renderExecutionReasoningChecklistCard({ checklist = {} } = {}) {
     '╭─ 🧠 POKit2 실행 추론 체크',
     '│',
     '│ 승인',
-    `│   경로      ${valueOrFallback(fields.selected_skill)}`,
-    `│   이슈      ${valueOrFallback(fields.active_issue)}`,
-    `│   게이트    ${valueOrFallback(fields.gate_state)}`,
-    `│   승인 입력 ${valueOrFallback(fields.execution_approval)}`,
-    `│   모드      ${formatExecutionMode(fields.mode)}`,
+    `│   ${padLabel('경로', 10)}${valueOrFallback(fields.selected_skill)}`,
+    `│   ${padLabel('이슈', 10)}${valueOrFallback(fields.active_issue)}`,
+    `│   ${padLabel('게이트', 10)}${valueOrFallback(fields.gate_state)}`,
+    `│   ${padLabel('승인 입력', 10)}${valueOrFallback(fields.execution_approval)}`,
+    `│   ${padLabel('모드', 10)}${formatExecutionMode(fields.mode)}`,
     '│',
     '│ 작업 방식',
-    `│   워커 권한 ${formatWorkerAuthorization(fields.worker_authorization)}`,
-    `│   워커 판단 ${formatWorkerAvailability(fields.worker_availability)}`,
-    `│   fallback ${valueOrFallback(fields.fallback_reason)}`,
+    `│   ${padLabel('워커 권한', 10)}${formatWorkerAuthorization(fields.worker_authorization)}`,
+    `│   ${padLabel('워커 판단', 10)}${formatWorkerAvailability(fields.worker_availability)}`,
+    `│   ${padLabel('fallback', 9)}${valueOrFallback(fields.fallback_reason)}`,
   ];
 
   // POK-247 (AC1) — show the 🟢 자동 / 🔴 사람 확인 plan for the upcoming steps.
@@ -112,9 +133,9 @@ export function renderExecutionReasoningChecklistCard({ checklist = {} } = {}) {
   lines.push(
     '│',
     '├─ 실행 전 계획',
-    `│   리뷰      ${valueOrFallback(fields.post_change_review_plan)}`,
-    `│   검증      ${valueOrFallback(fields.verification_plan)}`,
-    `│   다음      ${valueOrFallback(fields.next_step)}`,
+    `│   ${padLabel('리뷰', 10)}${valueOrFallback(fields.post_change_review_plan)}`,
+    `│   ${padLabel('검증', 10)}${valueOrFallback(fields.verification_plan)}`,
+    `│   ${padLabel('다음', 10)}${valueOrFallback(fields.next_step)}`,
     '╰─'
   );
 
@@ -130,9 +151,9 @@ export function renderProgressCard({ progressCard = {} } = {}) {
     '╭─ 🔄 POKit2 작업 진행 중',
     '│',
     '│ 현재',
-    `│   이슈    ${valueOrFallback(current.issue)}`,
-    `│   단계    ${valueOrFallback(current.step)}`,
-    `│   상태    ${valueOrFallback(current.state)}`,
+    `│   ${padLabel('이슈', 8)}${valueOrFallback(current.issue)}`,
+    `│   ${padLabel('단계', 8)}${valueOrFallback(current.step)}`,
+    `│   ${padLabel('상태', 8)}${valueOrFallback(current.state)}`,
   ];
 
   appendSourceSection(lines, source);
@@ -159,29 +180,29 @@ export function renderCompleteCard({ completeCard = {}, now = new Date() } = {})
     '╭─ ✅ POKit2 작업 완료',
     '│',
     '│ 결과',
-    `│   이슈    ${valueOrFallback(result.issue)}`,
-    `│   상태    ${valueOrFallback(result.state)}`,
-    `│   완료    ${completedAt}`,
+    `│   ${padLabel('이슈', 8)}${valueOrFallback(result.issue)}`,
+    `│   ${padLabel('상태', 8)}${valueOrFallback(result.state)}`,
+    `│   ${padLabel('완료', 8)}${completedAt}`,
     '│',
     '│ 변경',
     `│   ${valueOrFallback(changes.summary)}`,
     '│',
     '│ 검수',
-    `│   tests   ${valueOrFallback(verification.tests)}`,
-    `│   doctor  ${valueOrFallback(verification.doctor)}`,
-    `│   diff    ${valueOrFallback(verification.diff)}`,
+    `│   ${padLabel('tests', 8)}${valueOrFallback(verification.tests)}`,
+    `│   ${padLabel('doctor', 8)}${valueOrFallback(verification.doctor)}`,
+    `│   ${padLabel('diff', 8)}${valueOrFallback(verification.diff)}`,
   ];
 
   if (verification.commit) {
-    lines.push(`│   commit  ${valueOrFallback(verification.commit)}`);
+    lines.push(`│   ${padLabel('commit', 8)}${valueOrFallback(verification.commit)}`);
   }
 
   if (verification.evidence_path) {
-    lines.push(`│   증거     ${valueOrFallback(verification.evidence_path)}`);
+    lines.push(`│   ${padLabel('증거', 8)}${valueOrFallback(verification.evidence_path)}`);
   }
 
   if (verification.verified_at) {
-    lines.push(`│   검수일시 ${formatKst(new Date(verification.verified_at))}`);
+    lines.push(`│   ${padLabel('검수일시', 8)}${formatKst(new Date(verification.verified_at))}`);
   }
 
   lines.push(
