@@ -2,6 +2,12 @@
 
 This public changelog tracks the published `pokit2` package and its public source surfaces. Internal development issues, sprint memory, receipts, and work history are intentionally excluded.
 
+## [0.24.1] - 2026-06-22
+
+### Fixed
+
+- `pokit-public-sync` argument parsing: running with `--apply` but without `--version` no longer mistakes `--apply` for the version string (which produced a `v--apply` tag / commit message). The version now defaults to `package.json` when `--version` is omitted. Argument parsing is extracted into a pure, unit-tested `parseSyncArgs` function.
+
 ## [0.24.0] - 2026-06-21
 
 ### Added

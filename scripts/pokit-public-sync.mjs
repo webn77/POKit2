@@ -70,14 +70,22 @@ export async function copyFileSet({ srcRoot, destRoot, files }) {
   return { copied, skipped, copiedFiles };
 }
 
+// POK-384 — 인자 파싱 순수 함수. --version이 없으면 pkgVersion을 기본값으로 쓴다.
+// 버그였던 부분: indexOf('--version')가 -1이면 args[0]을 버전으로 오인 → '--apply'를 버전으로 읽음.
+export function parseSyncArgs(args = [], pkgVersion) {
+  const applyMode = args.includes('--apply');
+  const versionIdx = args.indexOf('--version');
+  const rawVersionArg = versionIdx !== -1 ? args[versionIdx + 1] : undefined;
+  // --version 다음 토큰이 없거나 또 다른 플래그면 무시하고 pkgVersion으로 폴백.
+  const versionArg = (rawVersionArg && !rawVersionArg.startsWith('--')) ? rawVersionArg : undefined;
+  const version = versionArg || pkgVersion;
+  return { applyMode, version, tag: `v${version}` };
+}
+
 async function main() {
   const args = process.argv.slice(2);
-  const applyMode = args.includes('--apply');
-  const versionArg = args[args.indexOf('--version') + 1];
-
   const pkg = JSON.parse(await readFile(path.join(ROOT, 'package.json'), 'utf8'));
-  const version = versionArg || pkg.version;
-  const tag = `v${version}`;
+  const { applyMode, version, tag } = parseSyncArgs(args, pkg.version);
 
   console.log(`\n📦 pokit-public-sync  버전: ${version}  모드: ${applyMode ? 'apply (commit 준비)' : 'dry-run'}`);
   console.log('─'.repeat(60));
