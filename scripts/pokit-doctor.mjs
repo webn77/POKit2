@@ -17,6 +17,7 @@ import { validateOptionalFields } from './lib/optional-fields.mjs';
 import { verifyFailureMemoryConsistency } from './lib/failure-memory.mjs';
 import { listIssueFiles, resolveActiveIssuePath } from './lib/issue-paths.mjs';
 import { parseFrontmatter, resolveIssueSprint } from './lib/issue-frontmatter.mjs';
+import { listUserStateFiles } from './lib/user-state.mjs';
 import { extractIssueId, isIssueId, ISSUE_ID_SOURCE } from './lib/issue-id.mjs';
 import {
   requiredSectionsFor,
@@ -283,6 +284,7 @@ export async function runDoctor({
   checkRuleSectionSize(context, items);
   await checkCoverageHonesty(context.root, items);
   await checkPokitVersionDriftDoctor(context, items);
+  await checkUserStateSlots(context, items);
 
   const summary = summarize(items);
   return {
@@ -290,6 +292,51 @@ export async function runDoctor({
     summary,
     items,
   };
+}
+
+// POK-371: 멀티유저 상태 파일 분리(A형) 검증. `.ai-os/current-<user>.md` 슬롯이
+// 존재하면 각 파일이 active_issue·gate_state·next_action을 모두 갖고 gate_state가
+// 유효 enum인지 유저별로 검증한다. 유저 파일이 없으면(단일유저) pass-skip.
+const USER_STATE_GATE_ENUM = new Set([
+  'pending', 'in_progress', 'gate_passed', 'passed', 'failed', 'blocked', 'dropped', 'idle', 'none',
+]);
+
+export async function checkUserStateSlots(context, items) {
+  // listUserStateFiles는 내부에서 모든 에러를 흡수해 throw하지 않는다.
+  const userFiles = await listUserStateFiles(context.root);
+  if (userFiles.length === 0) {
+    pass(items, 'user_state_slots', '.ai-os', '유저별 상태 파일 없음 — 단일유저 모드 (skip).');
+    return;
+  }
+
+  for (const uf of userFiles) {
+    const text = await readOptional(context.root, uf.relPath);
+    if (text === null) {
+      fail(items, 'user_state_slots', uf.relPath,
+        `${uf.file} 읽기 실패.`, '유저 상태 파일이 존재하지만 읽을 수 없습니다.');
+      continue;
+    }
+    const fm = parseFrontmatter(text);
+    const missing = ['active_issue', 'gate_state', 'next_action'].filter((k) => {
+      const v = fm[k];
+      return v === undefined || v === null || (typeof v === 'string' && v.trim() === '');
+    });
+    if (missing.length > 0) {
+      fail(items, 'user_state_slots', uf.relPath,
+        `${uf.file} 필수 필드 누락: ${missing.join(', ')}.`,
+        '유저별 current 파일에 active_issue·gate_state·next_action를 모두 채우세요.');
+      continue;
+    }
+    const gate = String(fm.gate_state).trim().toLowerCase();
+    if (!USER_STATE_GATE_ENUM.has(gate)) {
+      fail(items, 'user_state_slots', uf.relPath,
+        `${uf.file} gate_state "${fm.gate_state}"가 유효 enum이 아님.`,
+        `gate_state는 ${[...USER_STATE_GATE_ENUM].join('/')} 중 하나여야 합니다.`);
+      continue;
+    }
+    pass(items, 'user_state_slots', uf.relPath,
+      `${uf.file} 슬롯 정합 (active_issue=${fm.active_issue}, gate_state=${gate}).`);
+  }
 }
 
 // POK-204: every issue card whose created_at >= AUTHORING_RECEIPT_CUTOFF must have a

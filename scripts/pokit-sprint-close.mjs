@@ -113,7 +113,7 @@ function extractNextAction(handoffText) {
   return match?.[1]?.trim();
 }
 
-export async function closeSprint({ root = process.cwd(), sprintVersion, skipNpm = false } = {}) {
+export async function closeSprint({ root = process.cwd(), sprintVersion, skipNpm = false, dryRun = false } = {}) {
   const currentPath = path.join(root, '.ai-os/current.md');
   const handoffPath = path.join(root, '.ai-os/memory/session/handoff.md');
 
@@ -139,27 +139,33 @@ export async function closeSprint({ root = process.cwd(), sprintVersion, skipNpm
   });
   const tempHandoffPath = `${handoffPath}.tmp-${process.pid}`;
 
-  await withAiOsWriteGuard(root, archivePath, `archive handoff ${version}`, async () => {
-    await mkdir(path.dirname(archiveFullPath), { recursive: true });
-    await writeFile(archiveFullPath, handoffText, { encoding: 'utf8', flag: 'wx' }).catch((error) => {
-      if (error?.code === 'EEXIST') {
-        throw new Error(`Archive already exists: ${archivePath}`);
-      }
-      throw error;
+  // POK-388 — dry-run: 상태 파일을 쓰지 않고 점검만 수행한다. archive/handoff 갱신,
+  // Rule 회전, event-log 복사 등 모든 mutation을 건너뛰고 읽기 전용 점검 결과만 반환한다.
+  if (!dryRun) {
+    await withAiOsWriteGuard(root, archivePath, `archive handoff ${version}`, async () => {
+      await mkdir(path.dirname(archiveFullPath), { recursive: true });
+      await writeFile(archiveFullPath, handoffText, { encoding: 'utf8', flag: 'wx' }).catch((error) => {
+        if (error?.code === 'EEXIST') {
+          throw new Error(`Archive already exists: ${archivePath}`);
+        }
+        throw error;
+      });
     });
-  });
 
-  await withAiOsWriteGuard(root, '.ai-os/memory/session/handoff.md', `compact handoff ${version}`, async () => {
-    await writeFile(tempHandoffPath, compacted, 'utf8');
-    await rename(tempHandoffPath, handoffPath);
-  });
+    await withAiOsWriteGuard(root, '.ai-os/memory/session/handoff.md', `compact handoff ${version}`, async () => {
+      await writeFile(tempHandoffPath, compacted, 'utf8');
+      await rename(tempHandoffPath, handoffPath);
+    });
+  }
 
   // POK-144 v2 retro standard 안내 — retro.md 작성 여부 검증 (warning only, 차단 없음)
   const retroHints = await checkRetroPresence(root, version);
 
   // POK-134 Rule Section Rotation — current.md `## Rule` 본문 gate 로그 회전.
   // `### Precedents (pinned)` 섹션은 절대 건드리지 않음. archive는 append-only.
-  const ruleRotation = await rotateRuleArchive({ root, currentPath, currentText, sprintVersion: version });
+  const ruleRotation = dryRun
+    ? { rotated: 0, archivePath: null, message: 'dry-run: Rule rotation skipped.' }
+    : await rotateRuleArchive({ root, currentPath, currentText, sprintVersion: version });
 
   // POK-326 — 사용자 개선 피드백 카드: 스프린트 마감이 기본 표시 시점 (PO 결정 2026-06-10).
   // 카드 생성 실패가 마감 절차를 막지 않는다 — 실패 사유를 카드 자리에 남긴다.
@@ -216,20 +222,23 @@ export async function closeSprint({ root = process.cwd(), sprintVersion, skipNpm
   // POK-369 — event-log git 공유: sprint-close 시 event-log.jsonl을 logs/ 폴더에 복사.
   // event-log.jsonl이 없는 환경(fresh-pull)에서는 조용히 건너뜀.
   let eventLogCopyPath = null;
-  try {
-    const srcEventLog = path.join(root, '.ai-os/events/event-log.jsonl');
-    const logsDir = path.join(root, 'logs');
-    await stat(srcEventLog); // 파일 존재 확인 — 없으면 catch로 이동
-    await mkdir(logsDir, { recursive: true });
-    const destName = `event-log-${version}.jsonl`;
-    const destPath = path.join(logsDir, destName);
-    await copyFile(srcEventLog, destPath);
-    eventLogCopyPath = `logs/${destName}`;
-  } catch {
-    // event-log 없는 환경(fresh-pull/스타터 번들) — 건너뜀
+  if (!dryRun) {
+    try {
+      const srcEventLog = path.join(root, '.ai-os/events/event-log.jsonl');
+      const logsDir = path.join(root, 'logs');
+      await stat(srcEventLog); // 파일 존재 확인 — 없으면 catch로 이동
+      await mkdir(logsDir, { recursive: true });
+      const destName = `event-log-${version}.jsonl`;
+      const destPath = path.join(logsDir, destName);
+      await copyFile(srcEventLog, destPath);
+      eventLogCopyPath = `logs/${destName}`;
+    } catch {
+      // event-log 없는 환경(fresh-pull/스타터 번들) — 건너뜀
+    }
   }
 
   return {
+    dryRun,
     archivePath,
     handoffPath: '.ai-os/memory/session/handoff.md',
     sprintVersion: version,
@@ -306,12 +315,48 @@ async function checkRetroPresence(root, sprintVersion) {
   }
 }
 
+// POK-388 — sprint-close는 비가역 마감을 실행하므로 인자를 명시적으로 검증한다.
+// 허용 플래그만 통과시키고, --help는 도움말만, --dry-run은 부작용 없이 점검만 한다.
+const ALLOWED_FLAGS = new Set(['--help', '-h', '--skip-npm', '--dry-run']);
+
+const USAGE = [
+  '사용법: node scripts/pokit-sprint-close.mjs [<version>] [플래그]',
+  '',
+  '  <version>     마감할 스프린트 버전 (vX.Y.Z). 생략 시 current.md의 active_sprint 사용.',
+  '',
+  '플래그:',
+  '  --dry-run     실제 마감 없이 점검 결과만 출력한다 (상태 파일·로그를 쓰지 않음).',
+  '  --skip-npm    npm publish 해당 없는 스프린트의 릴리즈 산출물 게이트를 skip한다.',
+  '  --help, -h    이 도움말을 출력한다 (마감을 실행하지 않음).',
+  '',
+  '경고: 플래그 없이 실행하면 즉시 스프린트를 마감한다 (handoff 압축·아카이브·event-log 회전).',
+].join('\n');
+
 async function main() {
   const args = process.argv.slice(2);
+
+  // --help/-h: 도움말만 출력하고 종료. 어떤 상태 파일도 쓰지 않는다.
+  if (args.includes('--help') || args.includes('-h')) {
+    process.stdout.write(`${USAGE}\n`);
+    return;
+  }
+
+  // 알 수 없는 플래그 거부: 비가역 마감이 인자 오타로 실행되지 않게 막는다.
+  const unknownFlags = args.filter(a => a.startsWith('-') && !ALLOWED_FLAGS.has(a));
+  if (unknownFlags.length > 0) {
+    process.stderr.write(`알 수 없는 플래그: ${unknownFlags.join(', ')}\n\n${USAGE}\n`);
+    process.exitCode = 1;
+    return;
+  }
+
   const skipNpm = args.includes('--skip-npm');
-  const sprintVersion = args.find(a => !a.startsWith('--'));
-  const result = await closeSprint({ sprintVersion, skipNpm });
+  const dryRun = args.includes('--dry-run');
+  const sprintVersion = args.find(a => !a.startsWith('-'));
+  const result = await closeSprint({ sprintVersion, skipNpm, dryRun });
   // stdout은 순수 JSON 계약 유지 (기존 CLI 소비자/테스트) — 사람용 카드는 stderr로.
+  if (dryRun) {
+    process.stderr.write(`🔍 DRY RUN — 마감을 실행하지 않았습니다 (상태 파일·로그 무변경). 점검 결과만 표시합니다.\n\n`);
+  }
   if (result.feedbackCard) {
     process.stderr.write(`${result.feedbackCard}\n\n`);
   }

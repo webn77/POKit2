@@ -1,8 +1,18 @@
 // POK-327 — failure_context 구조화: 검증 실패 단계·원인·시도 횟수를 프론트매터에 기록한다.
-// 외부 의존성 없음 (Node built-ins 만 사용).
+// POK-386 — 멀티유저 쓰기 길목 배선: 상태 파일 경로를 resolveCurrentStatePath로 사람별
+//   라우팅하고, 읽기-수정-쓰기를 withStateWriteGuard로 직렬화한다(동일 유저 동시 세션·
+//   공용 current.md lost-update 방지). 부품(worktree-locks)은 v0.13(POK-223/236)에 존재.
 
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+
+import { resolveCurrentStatePath } from './user-state.mjs';
+import { withStateWriteGuard } from './worktree-locks.mjs';
+
+// 잠금 보유자 식별 — 세션 ID 우선, 없으면 프로세스 PID (project-state.mjs 동일 패턴).
+function lockHolder() {
+  return process.env.POKIT_SESSION_ID ?? `pid-${process.pid}`;
+}
 
 // ── 상수 ──────────────────────────────────────────────────────────────────────
 
@@ -146,26 +156,36 @@ export function buildFailureNoticeFields(ctx) {
  *                  | { ok: false, reason: string, activeIssue: string|null }>}
  */
 export async function recordFailureContext({ root, issueId, stage, reason, at }) {
-  const filePath = join(root, '.ai-os', 'current.md');
-  const text = await readFile(filePath, 'utf8');
+  // POK-386: current.md 고정 대신 사람별 파일로 라우팅 (유저 파일 없으면 fast-path로 current.md).
+  const { relPath } = await resolveCurrentStatePath(root);
+  const filePath = join(root, relPath);
 
-  const activeIssue = parseFrontmatterField(text, 'active_issue');
-  if (activeIssue !== issueId) {
-    return { ok: false, reason: 'issue_mismatch', activeIssue };
-  }
+  // POK-386: read-modify-write를 가드 안에서 수행해 동시 쓰기 lost-update를 막는다.
+  return withStateWriteGuard(
+    root,
+    { filePath: relPath, holder: lockHolder(), reason: 'record_failure_context' },
+    async () => {
+      const text = await readFile(filePath, 'utf8');
 
-  // at 기본값: 호출자 미제공 시 오늘 날짜 (YYYY-MM-DD)
-  const resolvedAt = at ?? new Date(Date.now()).toISOString().slice(0, 10);
+      const activeIssue = parseFrontmatterField(text, 'active_issue');
+      if (activeIssue !== issueId) {
+        return { ok: false, reason: 'issue_mismatch', activeIssue };
+      }
 
-  const existingRaw = parseFrontmatterField(text, 'failure_context');
-  const existing = parseFailureContext(existingRaw);
-  const next = nextFailureContext({ previous: existing, issue: issueId, stage, reason, at: resolvedAt });
-  const failureContextStr = formatFailureContext(next);
+      // at 기본값: 호출자 미제공 시 오늘 날짜 (YYYY-MM-DD)
+      const resolvedAt = at ?? new Date(Date.now()).toISOString().slice(0, 10);
 
-  const newText = rewriteFrontmatterField(text, 'failure_context', failureContextStr);
-  await writeFile(filePath, newText, 'utf8');
+      const existingRaw = parseFrontmatterField(text, 'failure_context');
+      const existing = parseFailureContext(existingRaw);
+      const next = nextFailureContext({ previous: existing, issue: issueId, stage, reason, at: resolvedAt });
+      const failureContextStr = formatFailureContext(next);
 
-  return { ok: true, failureContext: failureContextStr, attempt: next.attempt, parsed: next };
+      const newText = rewriteFrontmatterField(text, 'failure_context', failureContextStr);
+      await writeFile(filePath, newText, 'utf8');
+
+      return { ok: true, failureContext: failureContextStr, attempt: next.attempt, parsed: next };
+    },
+  );
 }
 
 /**
@@ -178,19 +198,28 @@ export async function recordFailureContext({ root, issueId, stage, reason, at })
  * @returns {Promise<{ ok: true, cleared: boolean, previous: object|null }>}
  */
 export async function clearFailureContext({ root, issueId }) {
-  const filePath = join(root, '.ai-os', 'current.md');
-  const text = await readFile(filePath, 'utf8');
+  // POK-386: 사람별 파일로 라우팅 + 가드로 read-modify-write 직렬화.
+  const { relPath } = await resolveCurrentStatePath(root);
+  const filePath = join(root, relPath);
 
-  const rawValue = parseFrontmatterField(text, 'failure_context');
-  const parsed = parseFailureContext(rawValue);
+  return withStateWriteGuard(
+    root,
+    { filePath: relPath, holder: lockHolder(), reason: 'clear_failure_context' },
+    async () => {
+      const text = await readFile(filePath, 'utf8');
 
-  if (parsed && parsed.issue === issueId) {
-    const newText = rewriteFrontmatterField(text, 'failure_context', 'none');
-    await writeFile(filePath, newText, 'utf8');
-    return { ok: true, cleared: true, previous: parsed };
-  }
+      const rawValue = parseFrontmatterField(text, 'failure_context');
+      const parsed = parseFailureContext(rawValue);
 
-  return { ok: true, cleared: false, previous: null };
+      if (parsed && parsed.issue === issueId) {
+        const newText = rewriteFrontmatterField(text, 'failure_context', 'none');
+        await writeFile(filePath, newText, 'utf8');
+        return { ok: true, cleared: true, previous: parsed };
+      }
+
+      return { ok: true, cleared: false, previous: null };
+    },
+  );
 }
 
 /**
@@ -202,7 +231,9 @@ export async function clearFailureContext({ root, issueId }) {
  */
 export async function readCurrentFailureContext({ root }) {
   try {
-    const text = await readFile(join(root, '.ai-os', 'current.md'), 'utf8');
+    // POK-386: 읽기도 쓰기와 동일하게 사람별 파일로 해석 (읽기↔쓰기 대칭). 읽기는 가드 불필요.
+    const { relPath } = await resolveCurrentStatePath(root);
+    const text = await readFile(join(root, relPath), 'utf8');
     return parseFailureContext(parseFrontmatterField(text, 'failure_context'));
   } catch {
     return null;

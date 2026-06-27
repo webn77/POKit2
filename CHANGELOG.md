@@ -2,6 +2,18 @@
 
 This public changelog tracks the published `pokit2` package and its public source surfaces. Internal development issues, sprint memory, receipts, and work history are intentionally excluded.
 
+## [0.25.0] - 2026-06-27
+
+### Added
+
+- Multi-project status dashboard (read-only ASCII board): aggregates the `.ai-os` state — active issue, gate state, next action — of registered projects into a central index and renders them as a single ASCII board. Row-array render structure prepared for a per-person layer.
+- Multi-user concurrent issue execution: the single `active_issue` slot is split into per-user state files, so team members can run different issues in parallel. Single-user backward compatibility and startup budget are preserved.
+- Multi-user write-path wiring: per-person routing for state writes plus serialization of read-modify-write via a write guard, preventing concurrent-write corruption.
+
+### Fixed
+
+- `pokit-sprint-close` argument guard: `--help`/`-h` now prints usage without running a close, `--dry-run` reports the close plan with zero side effects, and unknown flags are rejected. Previously `--help` silently executed an actual sprint close.
+
 ## [0.24.1] - 2026-06-22
 
 ### Fixed

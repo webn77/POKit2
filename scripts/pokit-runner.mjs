@@ -62,6 +62,7 @@ import {
 import { resolveActiveIssuePath } from './lib/issue-paths.mjs';
 import { assertIssueId, extractIssueId, isIssueId, ISSUE_ID_SOURCE } from './lib/issue-id.mjs';
 import { readActiveIssueForWorktree } from './lib/worktree-active-issue.mjs';
+import { resolveCurrentStatePath } from './lib/user-state.mjs';
 import { plainifyUserText } from './lib/user-text.mjs';
 import { acquireIssueLock, releaseLock } from './lib/worktree-locks.mjs';
 import { ensureCurrentSession, listActiveIssueClaims, readTaskSession } from './lib/worktree-sessions.mjs';
@@ -478,7 +479,9 @@ export async function syncGitIfStartup(root) {
 export async function runPreflight({ root = process.cwd(), phrase = '$pokit' } = {}) {
   const previousSessionId = process.env.POKIT_SESSION_ID;
   let injectedSessionId = false;
-  const currentPath = '.ai-os/current.md';
+  // POK-371: 멀티유저 상태 파일 분리(A형) 길목. 유저 파일이 없으면 fast-path로
+  // '.ai-os/current.md'를 그대로 쓴다(git 호출 없음 → startup 예산 보존, 하위 호환).
+  const { relPath: currentPath } = await resolveCurrentStatePath(root);
   const currentText = await readFile(path.join(root, currentPath), 'utf8');
   const current = parseFrontmatter(currentText);
   let activeIssue = normalizeActiveIssue(current.active_issue);
@@ -1304,7 +1307,9 @@ export async function runLoopTickCommand(args = [], { root = process.cwd() } = {
       index += 1;
     }
   }
-  const currentText = await readFile(path.join(root, '.ai-os/current.md'), 'utf8');
+  // POK-371: 멀티유저 상태 파일 분리(A형) 길목 — 유저 파일 없으면 current.md(fast-path).
+  const { relPath: tickCurrentPath } = await resolveCurrentStatePath(root);
+  const currentText = await readFile(path.join(root, tickCurrentPath), 'utf8');
   const current = parseFrontmatter(currentText);
   const activeIssue = current.active_issue ?? null;
 
