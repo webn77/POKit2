@@ -16,6 +16,7 @@ import { deriveStatus, isValidStatus } from './lib/status-enum.mjs';
 import { validateOptionalFields } from './lib/optional-fields.mjs';
 import { verifyFailureMemoryConsistency } from './lib/failure-memory.mjs';
 import { listIssueFiles, resolveActiveIssuePath } from './lib/issue-paths.mjs';
+import { buildIssueGraph } from './lib/derived-index.mjs';
 import { parseFrontmatter, resolveIssueSprint } from './lib/issue-frontmatter.mjs';
 import { listUserStateFiles } from './lib/user-state.mjs';
 import { extractIssueId, isIssueId, ISSUE_ID_SOURCE } from './lib/issue-id.mjs';
@@ -261,6 +262,7 @@ export async function runDoctor({
   await checkOptionalFields(context.root, items);
   await checkCandidateRouted(context.root, items);
   await checkDependsOnCycles(context.root, items);
+  await checkDependsOnDangling(context.root, items);
   checkLifecycleCardSchemas(items, { pass, fail });
   await checkFailureMemoryConsistency(context, items);
   await checkVersionCompatibility(context, items);
@@ -2264,6 +2266,30 @@ async function checkDependsOnCycles(projectRoot, items) {
     fail(items, 'depends_on_cycle', `${dir}/`, `depends_on cycle detected: ${cycleStr}`, 'Break the cycle by removing one depends_on reference.');
   } else {
     pass(items, 'depends_on_cycle', `${dir}/`, 'No depends_on cycle found.');
+  }
+}
+
+// POK-392 — depends_on dangling 참조 가드.
+// checkDependsOnCycles는 순환만 본다. 본 검사는 depends_on이 존재하지 않는
+// 이슈 ID(dangling — 깨진 참조)를 가리키는지 검출한다. POK-391 buildIssueGraph
+// (nodes = 실존 이슈, forward = depends_on 엣지)를 재사용한다(중복 그래프 빌드 없음).
+export async function checkDependsOnDangling(projectRoot, items) {
+  const { nodes, forward, dir } = await buildIssueGraph(projectRoot);
+  if (nodes.size === 0) return;
+
+  const dangling = [];
+  for (const [id, deps] of forward) {
+    for (const dep of deps) {
+      if (!nodes.has(dep)) dangling.push(`${id} → ${dep}`);
+    }
+  }
+
+  if (dangling.length > 0) {
+    fail(items, 'depends_on_dangling', `${dir}/`,
+      `depends_on dangling 참조(존재하지 않는 이슈): ${dangling.join(', ')}`,
+      'Remove or fix the depends_on reference pointing to a non-existent issue ID.');
+  } else {
+    pass(items, 'depends_on_dangling', `${dir}/`, 'No dangling depends_on reference found.');
   }
 }
 

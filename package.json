@@ -1,6 +1,6 @@
 {
   "name": "pokit2",
-  "version": "0.25.0",
+  "version": "0.26.0",
   "type": "module",
   "repository": {
     "type": "git",
@@ -34,7 +34,7 @@
     "docs/onboarding/"
   ],
   "bin": {
-    "pokit": "./bin/pokit.mjs"
+    "pokit": "bin/pokit.mjs"
   },
   "scripts": {
     "test": "node --test tests/*.mjs",

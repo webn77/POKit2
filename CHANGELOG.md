@@ -2,6 +2,17 @@
 
 This public changelog tracks the published `pokit2` package and its public source surfaces. Internal development issues, sprint memory, receipts, and work history are intentionally excluded.
 
+## [0.26.0] - 2026-06-28
+
+### Added
+
+- Issue relationship graph queries: `derived-index` now follows `depends_on` edges instead of only listing them flat. `queryReverseDependents` returns issues that depend on a given issue; `queryTransitiveDependencies` returns the topologically-ordered dependency chain (cycle-safe, with dangling references separated). Reuses local file parsing — no external database, no new dependencies.
+- `depends_on` dangling-reference doctor guard: `doctor` now detects `depends_on` entries pointing at non-existent issue IDs (previously only cycles were checked), reusing the graph builder. Guards against silently broken issue graphs from deletions or typos.
+
+### Notes
+
+- Agent-memory-graph theme: explore (research) → read (queries) → protect (guard). Foundation for local-first graph indexing of issue relationship data already present in issue frontmatter.
+
 ## [0.25.0] - 2026-06-27
 
 ### Added

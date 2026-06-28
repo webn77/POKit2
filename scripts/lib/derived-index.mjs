@@ -2,6 +2,11 @@ import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 
 import { listIssueFiles } from './issue-paths.mjs';
+// POK-391: 로컬 parseFrontmatter(이 파일 아래에 별도 정의)는 멀티라인 list를
+// 못 읽어 멀티라인 형식 254개 이슈의 depends_on 엣지(총 403개 중 대부분)를
+// 전부 떨군다. 그래프 쿼리는 멀티라인 배열을 파싱하는 issue-frontmatter의
+// 것을 써야 한다(이름 충돌 회피용 alias).
+import { parseFrontmatter as parseCardFrontmatter } from './issue-frontmatter.mjs';
 
 export function parseArgs(argv) {
   const args = { root: process.cwd(), sprint: null, status: null, projectLocal: false, grouped: false, groupBy: null };
@@ -308,6 +313,88 @@ export function renderGroupedBacklogCard(grouped, { title = null } = {}) {
 function firstMarkdownHeading(text) {
   const match = text.match(/^#\s+(.+)$/m);
   return match?.[1] ?? null;
+}
+
+// ── POK-391: 이슈 관계 그래프 쿼리 (역방향·전이의존) ──────────────────────
+//
+// 기존 빌더는 평면 목록일 뿐 depends_on 엣지를 1-hop도 따라가지 않는다
+// (POK-389 research §4). 아래 함수들이 엣지를 따라가는 첫 쿼리 계층이다.
+// 외부 DB·신규 의존성 0 — 기존 listIssueFiles + 카드 파서만 재사용한다.
+
+/**
+ * depends_on 원시값을 엣지 배열로 정규화한다.
+ * - 멀티라인 list → 배열(POK-id만 통과, 공백 정리)
+ * - inline "[]" 문자열 / bare key(true) / null / undefined → []  (POK-389 BLOCKER A 방지)
+ */
+export function normalizeDependsOn(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((entry) => typeof entry === 'string')
+    .map((entry) => entry.trim())
+    .filter((entry) => /^POK-\d+$/.test(entry)); // 끝 앵커 — "POK-371 (메모)" 같은 오염 항목 거부
+}
+
+/**
+ * 모든 이슈 카드를 읽어 의존 그래프를 만든다.
+ * @returns {Promise<{ nodes: Set<string>, forward: Map<string, string[]>, dir: string }>}
+ *   nodes = 존재하는 이슈 ID, forward = id → depends_on 엣지 배열, dir = 이슈 디렉토리(상대경로)
+ */
+export async function buildIssueGraph(root) {
+  const { dir, files } = await listIssueFiles(root);
+  const nodes = new Set();
+  const forward = new Map();
+  for (const file of files) {
+    const text = await readFile(path.join(root, dir, file), 'utf8');
+    const frontmatter = parseCardFrontmatter(text);
+    const id = frontmatter.id ?? file.replace(/\.md$/, '');
+    nodes.add(id);
+    forward.set(id, normalizeDependsOn(frontmatter.depends_on));
+  }
+  return { nodes, forward, dir };
+}
+
+/**
+ * 역방향: targetId를 depends_on 엣지로 가진 이슈 ID 배열(이슈번호 오름차순).
+ */
+export async function queryReverseDependents(root, targetId) {
+  const { forward } = await buildIssueGraph(root);
+  const dependents = [];
+  for (const [id, deps] of forward) {
+    if (deps.includes(targetId)) dependents.push(id);
+  }
+  return dependents.sort((left, right) => issueNumber(left) - issueNumber(right));
+}
+
+/**
+ * 전이: startId의 depends_on 체인을 위상순(의존이 먼저)으로 반환. startId 자신은 제외.
+ * 순환에도 무한루프 없이 안전 종료(onStack 가드). 존재하지 않는 참조는 dangling으로 분리.
+ * @returns {Promise<{ order: string[], dangling: string[] }>}
+ */
+export async function queryTransitiveDependencies(root, startId) {
+  const { nodes, forward } = await buildIssueGraph(root);
+  const visited = new Set();
+  const onStack = new Set();
+  const order = [];
+  const dangling = new Set();
+
+  const visit = (id) => {
+    if (visited.has(id)) return;
+    if (onStack.has(id)) return; // 순환 가드 — 재진입 차단
+    onStack.add(id);
+    for (const dep of forward.get(id) ?? []) {
+      if (!nodes.has(dep)) { dangling.add(dep); continue; }
+      visit(dep);
+    }
+    onStack.delete(id);
+    visited.add(id);
+    if (id !== startId) order.push(id); // post-order = 위상순(의존 먼저)
+  };
+
+  visit(startId);
+  return {
+    order,
+    dangling: [...dangling].sort((left, right) => issueNumber(left) - issueNumber(right)),
+  };
 }
 
 function issueNumber(id) {
